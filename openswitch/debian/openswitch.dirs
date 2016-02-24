@@ -1,0 +1,8 @@
+usr/usr/lib/python2.7/site-packages
+lib/systemd/system
+etc/lighttpd
+etc/init.d
+etc/ssl/certs
+etc/openswitch/platform
+srv/www/api
+srv/www/static

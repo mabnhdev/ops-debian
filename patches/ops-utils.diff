@@ -1,0 +1,44 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 694fcf1..a940105 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -34,8 +34,8 @@ include_directories (${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}/${INCL_DIR}
+ # Rules to build ops-utils library
+ add_library (${UTILS_LIBS} SHARED ${SOURCES})
+ 
+-target_link_libraries (${UTILS_LIBS} ${OVSCOMMON_LIBRARIES}
+-                       ${OVSDB_LIBRARIES}
++target_link_libraries (${UTILS_LIBS} ${OVSCOMMON_LDFLAGS}
++                       ${OVSDB_LDFLAGS}
+                        -lpthread -lrt)
+ # Define compile flags
+ set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -std=gnu99 -Wall -Werror")
+@@ -46,7 +46,7 @@ set(OPS_U_VER_PATCH "0")
+ set(OPSUTILS_VERSION "${OPS_U_VER_MAJOR}.${OPS_U_VER_MINOR}.${OPS_U_VER_PATCH}")
+ set_target_properties(${UTILS_LIBS} PROPERTIES VERSION ${OPSUTILS_VERSION})
+ 
+-configure_file(${SRC_DIR}/opsutils.pc.in ${SRC_DIR}/opsutils.pc @ONLY)
++configure_file(${SRC_DIR}/opsutils.pc.in ${CMAKE_BINARY_DIR}/ops-utils/opsutils.pc @ONLY)
+ 
+ # Rules to stage ops-utils library and header files
+ install(TARGETS ${UTILS_LIBS}
+@@ -57,4 +57,18 @@ install(TARGETS ${UTILS_LIBS}
+ install(FILES ${INCL_DIR}/ops-utils.h ${INCL_DIR}/vrf-utils.h
+         DESTINATION include)
+ 
+-    install(FILES ${CMAKE_BINARY_DIR}/${SRC_DIR}/opsutils.pc DESTINATION lib/pkgconfig)
++    install(FILES ${CMAKE_BINARY_DIR}/ops-utils/opsutils.pc DESTINATION lib/pkgconfig)
++
++###
++### Packaging
++###
++SET(CPACK_DEBIAN_PACKAGE_NAME "ops-utils")
++SET(CPACK_DEBIAN_PACKAGE_VERSION "${OPSUTILS_VERSION}")
++SET(CPACK_DEBIAN_PACKAGE_ARCH "amd64")
++SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6")
++SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "OpsDev <ops-dev@lists.openswitch.net>")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION_SUMMARY "OpenSwitch utilities library.")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Some commonly used functions.")
++SET(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_CURRENT_SOURCE_DIR}/postinst")
++SET(CPACK_GENERATOR "DEB")
++INCLUDE(CPack)

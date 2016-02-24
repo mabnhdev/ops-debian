@@ -1,0 +1,30 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ae7821f..1db719b 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -40,10 +40,23 @@ set (SOURCES ${SRC_DIR}/intfd.c ${SRC_DIR}/intfd_ovsdb_if.c ${SRC_DIR}/intfd_uti
+ # Rules to build ops-intfd
+ add_executable (${INTFD} ${SOURCES})
+ 
+-target_link_libraries (${INTFD} ${OPSUTILS_LIBRARIES} ${CONFIG_YAML_LIBRARIES} ${OVSCOMMON_LIBRARIES}
+-                       ${OVSDB_LIBRARIES} ${OPENSSL_LIBRARIES}
++target_link_libraries (${INTFD} ${OPSUTILS_LDFLAGS} ${CONFIG_YAML_LDFLAGS} ${OVSCOMMON_LDFLAGS}
++                       ${OVSDB_LDFLAGS} ${OPENSSL_LIBRARIES}
+                        -lpthread -lrt)
+ 
+ # Rules to install ops-intfd binary in rootfs
+ install(TARGETS ${INTFD}
+     RUNTIME DESTINATION bin)
++
++###
++### Packaging
++###
++SET(CPACK_DEBIAN_PACKAGE_NAME "${INTFD}")
++SET(CPACK_DEBIAN_PACKAGE_VERSION "0.1.0")
++SET(CPACK_DEBIAN_PACKAGE_ARCH "amd64")
++SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, libconfig-yaml, openvswitch-common")
++SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "OpsDev <ops-dev@lists.openswitch.net>")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION_SUMMARY "OpenSwitch interface daemon.")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Manages OpenSwitch interfaces.")
++SET(CPACK_GENERATOR "DEB")
++INCLUDE(CPack)

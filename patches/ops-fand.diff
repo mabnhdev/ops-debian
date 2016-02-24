@@ -1,0 +1,41 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 351a4de..aa7e409 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -28,7 +28,7 @@ pkg_check_modules(OVSCOMMON REQUIRED libovscommon)
+ pkg_check_modules(OVSDB REQUIRED libovsdb)
+ 
+ include_directories (${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}/${INCL_DIR}
+-                     ${OVSCOMMON_INCLUDE_DIRS}
++                     ${CONFIG_YAML_INCLUDE_DIRS} ${OVSCOMMON_INCLUDE_DIRS}
+ )
+ 
+ # Source files to build ops-fand
+@@ -38,8 +38,8 @@ set (SOURCES ${SRC_DIR}/fand.c ${SRC_DIR}/physfan.c ${SRC_DIR}/fanspeed.c
+ # Rules to build ops-fand
+ add_executable (${FAND} ${SOURCES})
+ 
+-target_link_libraries (${FAND} ${CONFIG_YAML_LIBRARIES}
+-                       ${OVSCOMMON_LIBRARIES} ${OVSDB_LIBRARIES}
++target_link_libraries (${FAND} ${CONFIG_YAML_LDFLAGS}
++                       ${OVSCOMMON_LDFLAGS} ${OVSDB_LDFLAGS}
+                        -lpthread -lrt)
+ 
+ # Build ops-ledd cli shared libraries.
+@@ -48,3 +48,16 @@ add_subdirectory(src/cli)
+ # Rules to install ops-fand binary in rootfs
+ install(TARGETS ${FAND}
+         RUNTIME DESTINATION bin)
++
++###
++### Packaging
++###
++SET(CPACK_DEBIAN_PACKAGE_NAME "${FAND}")
++SET(CPACK_DEBIAN_PACKAGE_VERSION "0.1.0")
++SET(CPACK_DEBIAN_PACKAGE_ARCH "amd64")
++SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, libconfig-yaml, openvswitch-common")
++SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "OpsDev <ops-dev@lists.openswitch.net>")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION_SUMMARY "OpenSwitch fans daemon.")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION "The ops-fand daemon monitors and controls the state of the fans.")
++SET(CPACK_GENERATOR "DEB")
++INCLUDE(CPack)

@@ -1,0 +1,30 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 8005646..529ff48 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -42,7 +42,7 @@ include_directories(${CMAKE_SOURCE_DIR} ${OVSCOMMON_INCLUDE_DIRS} ${PROJECT_SOUR
+ 
+ add_library (ovs_sim_plugin SHARED ${SOURCES})
+ 
+-target_link_libraries (ovs_sim_plugin ${OVSCOMMON_LIBRARIES})
++target_link_libraries (ovs_sim_plugin ${OVSCOMMON_LDFLAGS})
+ 
+ ###
+ ### Installation
+@@ -50,3 +50,16 @@ target_link_libraries (ovs_sim_plugin ${OVSCOMMON_LIBRARIES})
+ install(TARGETS ovs_sim_plugin
+         LIBRARY DESTINATION lib/openvswitch/plugins
+     )
++
++###
++### Packaging
++###
++SET(CPACK_DEBIAN_PACKAGE_NAME "ops-switchd-container-plugin")
++SET(CPACK_DEBIAN_PACKAGE_VERSION "0.1.0")
++SET(CPACK_DEBIAN_PACKAGE_ARCH "amd64")
++SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, openvswitch-common")
++SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "OpsDev <ops-dev@lists.openswitch.net>")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION_SUMMARY "OpenSwitch Test daemon.")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Part of the virtual software based test infrastructure.")
++SET(CPACK_GENERATOR "DEB")
++INCLUDE(CPack)

@@ -1,0 +1,30 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ab2d146..3d3f7cd 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -36,10 +36,23 @@ set (SOURCES ${SRC_DIR}/portd.c ${SRC_DIR}/portd_l3.c)
+ 
+ # Rules to build ops-portd
+ add_executable (${PORTD} ${SOURCES})
+-target_link_libraries (${PORTD} ${OVSCOMMON_LIBRARIES}
+-                       ${OVSDB_LIBRARIES}
++target_link_libraries (${PORTD} ${OVSCOMMON_LDFLAGS}
++                       ${OVSDB_LDFLAGS}
+                        -lpthread -lrt)
+ 
+ # Rules to install ops-portd binary in rootfs
+ install(TARGETS ${PORTD}
+     RUNTIME DESTINATION bin)
++
++###
++### Packaging
++###
++SET(CPACK_DEBIAN_PACKAGE_NAME "${PORTD}")
++SET(CPACK_DEBIAN_PACKAGE_VERSION "0.1.0")
++SET(CPACK_DEBIAN_PACKAGE_ARCH "amd64")
++SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, openvswitch-common")
++SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "OpsDev <ops-dev@lists.openswitch.net>")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION_SUMMARY "OpenSwitch Port daemon.")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Network interface manager.")
++SET(CPACK_GENERATOR "DEB")
++INCLUDE(CPack)

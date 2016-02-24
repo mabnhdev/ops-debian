@@ -1,0 +1,41 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index dad57c2..83e6f45 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -29,7 +29,7 @@ pkg_check_modules(OVSCOMMON REQUIRED libovscommon)
+ pkg_check_modules(OVSDB REQUIRED libovsdb)
+ 
+ include_directories (${PROJECT_BINARY_DIR} ${PROJECT_SOURCE_DIR}/${INCL_DIR}
+-                     ${OVSCOMMON_INCLUDE_DIRS}
++                     ${OVSCOMMON_INCLUDE_DIRS} ${CONFIG_YAML_INCLUDE_DIRS}
+ )
+ 
+ # Sources to build ops-ledd
+@@ -38,8 +38,8 @@ set (SOURCES ${SRC_DIR}/ledd.c)
+ # Rules to build ops-ledd
+ add_executable (${LEDD} ${SOURCES})
+ 
+-target_link_libraries (${LEDD} ${CONFIG_YAML_LIBRARIES}
+-                       ${OVSCOMMON_LIBRARIES} ${OVSDB_LIBRARIES}
++target_link_libraries (${LEDD} ${CONFIG_YAML_LDFLAGS}
++                       ${OVSCOMMON_LDFLAGS} ${OVSDB_LDFLAGS}
+                        -lpthread -lrt)
+ 
+ # Build ops-ledd cli shared libraries.
+@@ -48,3 +48,16 @@ add_subdirectory(src/cli)
+ # Rules to install ops-ledd binary in rootfs
+ install(TARGETS ${LEDD}
+         RUNTIME DESTINATION bin)
++
++###
++### Packaging
++###
++SET(CPACK_DEBIAN_PACKAGE_NAME "${LEDD}")
++SET(CPACK_DEBIAN_PACKAGE_VERSION "0.1.0")
++SET(CPACK_DEBIAN_PACKAGE_ARCH "amd64")
++SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, libconfig-yaml, openvswitch-common")
++SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "OpsDev <ops-dev@lists.openswitch.net>")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION_SUMMARY "OpenSwitch LED daemon.")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Reports and controls the state of user-managed LEDs.")
++SET(CPACK_GENERATOR "DEB")
++INCLUDE(CPack)

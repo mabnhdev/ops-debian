@@ -1,0 +1,217 @@
+diff --git a/debian/README.Debian b/debian/README.Debian
+new file mode 100644
+index 0000000..dcffa74
+--- /dev/null
++++ b/debian/README.Debian
+@@ -0,0 +1,6 @@
++ops-cli for Debian
++------------------
++
++<possible notes regarding this package - if none, delete this file>
++
++ -- OpenSwitch Developers <ops-dev@lists.openswitch.net>  Tue, 16 Feb 2016 09:36:35 -0500
+diff --git a/debian/README.source b/debian/README.source
+new file mode 100644
+index 0000000..d000091
+--- /dev/null
++++ b/debian/README.source
+@@ -0,0 +1,10 @@
++ops-cli for Debian
++------------------
++
++<this file describes information about the source package, see Debian policy
++manual section 4.14. You WILL either need to modify or delete this file>
++
++
++
++ -- OpenSwitch Developers <ops-dev@lists.openswitch.net>  Tue, 16 Feb 2016 09:36:35 -0500
++
+diff --git a/debian/changelog b/debian/changelog
+new file mode 100644
+index 0000000..9570803
+--- /dev/null
++++ b/debian/changelog
+@@ -0,0 +1,5 @@
++ops-cli (0.1.0-1) unstable; urgency=low
++
++  * Initial release 
++
++ -- OpenSwitch Developers <ops-dev@lists.openswitch.net>  Tue, 16 Feb 2016 08:13:56 -0500
+diff --git a/debian/compat b/debian/compat
+new file mode 100644
+index 0000000..ec63514
+--- /dev/null
++++ b/debian/compat
+@@ -0,0 +1 @@
++9
+diff --git a/debian/control b/debian/control
+new file mode 100644
+index 0000000..ef9522a
+--- /dev/null
++++ b/debian/control
+@@ -0,0 +1,22 @@
++Source: ops-cli
++Priority: optional
++Maintainer: OpenSwitch Developers <ops-dev@lists.openswitch.net>
++Build-Depends: debhelper (>= 9)
++Standards-Version: 3.9.5
++Section: libs
++Homepage: http://openswitch.net
++#Vcs-Git: git://anonscm.debian.org/collab-maint/ops-cli.git
++#Vcs-Browser: http://anonscm.debian.org/?p=collab-maint/ops-cli.git;a=summary
++
++Package: ops-cli-dev
++Section: libdevel
++Architecture: any
++Depends: ops-cli (= ${binary:Version}), ${misc:Depends}
++Description: OpenSwitch ops-cli CLI library
++ Provides the CLI for OpenSwitch.
++
++Package: ops-cli
++Architecture: any
++Depends: ${shlibs:Depends}, ${misc:Depends}
++Description: OpenSwitch ops-cli CLI library
++ Provides the CLI for OpenSwitch.
+diff --git a/debian/copyright b/debian/copyright
+new file mode 100644
+index 0000000..1089b34
+--- /dev/null
++++ b/debian/copyright
+@@ -0,0 +1,38 @@
++Format: http://www.debian.org/doc/packaging-manuals/copyright-format/1.0/
++Upstream-Name: ops-cli
++Source: <url://example.com>
++
++Files: *
++Copyright: <years> <put author's name and email here>
++           <years> <likewise for another author>
++License: <special license>
++ <Put the license of the package here indented by 1 space>
++ <This follows the format of Description: lines in control file>
++ .
++ <Including paragraphs>
++
++# If you want to use GPL v2 or later for the /debian/* files use 
++# the following clauses, or change it to suit. Delete these two lines
++Files: debian/*
++Copyright: 2016 OpenSwitch Developers <ops-dev@lists.openswitch.net>
++License: GPL-2+
++ This package is free software; you can redistribute it and/or modify
++ it under the terms of the GNU General Public License as published by
++ the Free Software Foundation; either version 2 of the License, or
++ (at your option) any later version.
++ .
++ This package is distributed in the hope that it will be useful,
++ but WITHOUT ANY WARRANTY; without even the implied warranty of
++ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ GNU General Public License for more details.
++ .
++ You should have received a copy of the GNU General Public License
++ along with this program. If not, see <http://www.gnu.org/licenses/>
++ .
++ On Debian systems, the complete text of the GNU General
++ Public License version 2 can be found in "/usr/share/common-licenses/GPL-2".
++
++# Please also look if there are files or directories which have a
++# different copyright/license attached and list them here.
++# Please avoid to pick license terms that are more restrictive than the
++# packaged work, as it may make Debian's contributions unacceptable upstream.
+diff --git a/debian/docs b/debian/docs
+new file mode 100644
+index 0000000..dc481d2
+--- /dev/null
++++ b/debian/docs
+@@ -0,0 +1,6 @@
++INSTALL.quagga.txt
++NEWS
++README
++README.md
++README.NetBSD
++TODO
+diff --git a/debian/ops-cli-dev.dirs b/debian/ops-cli-dev.dirs
+new file mode 100644
+index 0000000..4418816
+--- /dev/null
++++ b/debian/ops-cli-dev.dirs
+@@ -0,0 +1,2 @@
++usr/lib
++usr/include
+diff --git a/debian/ops-cli-dev.install b/debian/ops-cli-dev.install
+new file mode 100644
+index 0000000..6cd8ddd
+--- /dev/null
++++ b/debian/ops-cli-dev.install
+@@ -0,0 +1,4 @@
++usr/include/*
++usr/lib/lib*.a
++usr/lib/lib*.so
++usr/lib/pkgconfig/*
+diff --git a/debian/ops-cli.dirs b/debian/ops-cli.dirs
+new file mode 100644
+index 0000000..6845771
+--- /dev/null
++++ b/debian/ops-cli.dirs
+@@ -0,0 +1 @@
++usr/lib
+diff --git a/debian/ops-cli.install b/debian/ops-cli.install
+new file mode 100644
+index 0000000..d0dbfd1
+--- /dev/null
++++ b/debian/ops-cli.install
+@@ -0,0 +1 @@
++usr/lib/lib*.so.*
+diff --git a/debian/rules b/debian/rules
+new file mode 100755
+index 0000000..78122e7
+--- /dev/null
++++ b/debian/rules
+@@ -0,0 +1,42 @@
++#!/usr/bin/make -f
++# See debhelper(7) (uncomment to enable)
++# output every command that modifies files on the build system.
++#DH_VERBOSE = 1
++
++# see EXAMPLES in dpkg-buildflags(1) and read /usr/share/dpkg/*
++DPKG_EXPORT_BUILDFLAGS = 1
++include /usr/share/dpkg/default.mk
++
++# see FEATURE AREAS in dpkg-buildflags(1)
++#export DEB_BUILD_MAINT_OPTIONS = hardening=+all
++
++# see ENVIRONMENT in dpkg-buildflags(1)
++# package maintainers to append CFLAGS
++#export DEB_CFLAGS_MAINT_APPEND  = -Wall -pedantic
++# package maintainers to append LDFLAGS
++#export DEB_LDFLAGS_MAINT_APPEND = -Wl,--as-needed
++
++
++# main packaging script based on dh7 syntax
++%:
++	dh $@
++
++override_dh_shlibdeps:
++	dh_shlibdeps -- --ignore-missing-info
++
++override_dh_auto_configure:
++	./bootstrap.sh && \
++	./configure --prefix=/usr \
++		--disable-silent-rules --enable-user=root \
++		--enable-group=root --enable-ovsdb --enable-vtysh \
++		--enable-shared CFLAGS="-DOPS" 
++
++# debmake generated override targets
++# This is example for Cmake (See http://bugs.debian.org/641051 )
++#override_dh_auto_configure:
++#	dh_auto_configure -- \
++#	-DCMAKE_LIBRARY_PATH=$(DEB_HOST_MULTIARCH)
++
++
++
++
+diff --git a/debian/source/format b/debian/source/format
+new file mode 100755
+index 0000000..163aaf8
+--- /dev/null
++++ b/debian/source/format
+@@ -0,0 +1 @@
++3.0 (quilt)

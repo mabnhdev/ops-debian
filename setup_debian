@@ -1,0 +1,62 @@
+#!/bin/bash
+# set -x
+set -e
+
+###########################################################
+# One time setup for Standalone OpenSwitch Project
+###########################################################
+
+# Required/recommended Libraries
+sudo apt-get install -y --no-install-recommends gawk wget git gitk diffstat unzip texinfo gcc-multilib build-essential chrpath screen curl device-tree-compiler xterm gperf quilt cpio lsb-release cmake libyaml-cpp0.3-dev libgtest-dev zlib1g-dev libi2c-dev systemd lintian reprepro dh-make emacs python2.7 python2.7-dev python-openvswitch python-pip python-dev python-all-dev xutils-dev libreadline6-dev ruby dh-autoreconf
+
+# WebUI build environment
+sudo apt-get remove -y nodejs npm || true
+sudo apt-get autoremove -y || true
+curl -sL https://deb.nodesource.com/setup_5.x | sudo -E bash -
+sudo apt-get install -y nodejs
+sudo ln -s /usr/bin/nodejs /usr/bin/node || true
+sudo gem install sass
+
+# Python Libraries
+PHYTHON_PKGS="inflect tornado stdeb"
+sudo pip install --exists-action i ${PHYTHON_PKGS}
+sudo pip install --upgrade ${PHYTHON_PKGS}
+
+# OE must name the user version of i2c-dev.h as i2c-dev-user.h
+# OpenSwitch files include <linux/i2c-dev-user.h>
+if [ ! -f /usr/include/linux/i2c-dev-user.h ] ; then
+   sudo ln -s /usr/include/linux/i2c-dev.h /usr/include/linux/i2c-dev-user.h
+fi
+
+# Build GTest if it doesn't already exists
+if [ ! -f /usr/lib/libgtest.so ] ; then
+    cd /usr/src/gtest
+    sudo cmake . -DBUILD_SHARED_LIBS=ON
+    sudo make
+    sudo mv *.so /usr/lib
+    sudo ln -s /usr/lib/libgtest.so /usr/lib/libgtest.so.1.7.0 
+    sudo ln -s /usr/lib/libgtest.so.1.7.0 /usr/lib/libgtest.so.1
+    sudo ln -s /usr/lib/libgtest_main.so /usr/lib/libgtest_main.so.1.7.0 
+    sudo ln -s /usr/lib/libgtest_main.so.1.7.0 /usr/lib/libgtest_main.so.1
+    cd ${TOP}
+fi
+
+# Openswitch expects pkg-config to know about GTest
+if [ ! -f /usr/lib/pkgconfig/gtest.pc ] ; then
+(cat <<EOF 
+prefix=/user
+exec_prefix=/usr
+libdir=\${prefix}/lib
+includedir=\${prefix}/include/gtest
+
+Name: gtest
+Description: Google test harness for C++.
+Version: 1.7.0
+Requires:
+Libs: -L\${libdir} -lgtest
+Cflags: -I\${includedir}
+
+EOF
+) >> gtest.pc
+sudo mv ./gtest.pc /usr/lib/pkgconfig
+fi

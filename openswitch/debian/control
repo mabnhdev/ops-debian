@@ -1,0 +1,15 @@
+Source: openswitch
+Section: unknown
+Priority: optional
+Maintainer: OpenSwitch Developers <ops-dev@lists.openswitch.net>
+Build-Depends: debhelper (>= 9)
+Standards-Version: 3.9.5
+Homepage: http://www.openswitch.net
+#Vcs-Git: git://anonscm.debian.org/collab-maint/openswitch.git
+#Vcs-Browser: http://anonscm.debian.org/?p=collab-maint/openswitch.git;a=summary
+
+Package: openswitch
+Architecture: any
+Depends: ${misc:Depends} python2.7, libc6(>=2.19-18), zlib1g, libatomic1, libyaml-cpp0.3, openvswitch-common, ops-cli, ops-cli-dev, lighttpd, python-openvswitch, python-tornado(>=4.2.1), python-restd, python-ops-aaautilspamcfg, python-pam, python-six, python-certifi, python-inflect,  python-openssl, python-cryptography, python-json-schema-validator, python-jsonschema, python-singledispatch, python-backports.ssl-match-hostname, python-jsonpatch, libconfig-yaml, ops-utils, ops-fand, ops-arpmgrd, ops-intfd, ops-ledd, ops-powerd, ops-pmd, ops-portd, ops-sysd, ops-tempd, ops-vland
+Description: OpenSwitch for Debian.
+ This package is the controller for the OpenSwitch suite of applications.

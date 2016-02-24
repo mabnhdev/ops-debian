@@ -1,0 +1,22 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 73b4fd0..1f10493 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -66,3 +66,17 @@ install(FILES ${INCL_DIR}/config-yaml.h ${INCL_DIR}/i2c.h
+ 	DESTINATION include)
+ 
+ add_subdirectory(tests)
++
++###
++### Packaging
++###
++SET(CPACK_DEBIAN_PACKAGE_NAME "lib${CONFIG_YAML}")
++SET(CPACK_DEBIAN_PACKAGE_VERSION "${YAML_CONFIG_VERSION}")
++SET(CPACK_DEBIAN_PACKAGE_ARCH "amd64")
++SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, libyaml-cpp0.3")
++SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "OpsDev <ops-dev@lists.openswitch.net>")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION_SUMMARY "OpenSwitch config-yaml library.")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION "ops-config-yaml is used parse and access YAML hardware description files.")
++SET(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_CURRENT_SOURCE_DIR}/postinst")
++SET(CPACK_GENERATOR "DEB")
++INCLUDE(CPack)

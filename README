@@ -1,0 +1,137 @@
+#########################################################################
+# Standalone Debian version of OpenSwitch
+#########################################################################
+
+#
+# This is still very much a work in progress!!!!
+#
+
+#########################################################################
+Status/Errata
+#########################################################################
+
+* Support for the ASIC is not ported yet.
+
+* ops-cli must che checked out in order for the build to succed since
+  there are references to the ops-cli source in the build.  You don't
+  have to do anything - the makefile takes care of it, but you should
+  be aware.
+
+* Debian packaging is not yet available for the new openvswitch, so
+  this build reverts all repositories to a point before the new
+  openvswitch was merged in.
+
+#########################################################################
+
+IMPORTANT!  For the time being, you must be a sudo'er.  A sudo'er without
+            a password required would be much better.
+
+=============================================
+This has only been tested on Debian Jessie!!!
+=============================================
+
+#
+# Initial Setup - Do this once
+#
+
+* Create a working directory for the OpenSwitch Debian project
+  and then cd to that directory.
+
+* Clone the ops-debian repository.
+
+* Change working directory to ops-debian
+         cd ./ops-debian
+
+* Make sure your machine is up-to-date.
+
+  Execute the following script...
+          ./setup_debian
+
+#
+# Building
+#
+
+* All checked out repositories can be found in ops-debian/src/<repository>
+
+  You only need to check out a repository if you are planning to make
+  changes to files in the repository.  To check out a repository, use
+  the following command.
+
+  make checkout-<repository>
+
+* All repositories are built from shadow repositories located in
+  ops-debian/build/shadow/<repository>.  If the repository has been
+  checked out (ie. ops-debian/src/<repository> exists), then the shadow
+  will be made up of symbolic links back to the checked out repository.
+  If the repository has not been checked out, then the repository will
+  be cloned into the shadow repository.
+
+  Since shadow repositories are links back to the checked out
+  repositories, all changes to files in the checked out repository
+  will be reflected in the shadow repository.
+
+  NOTE: ops-webui and ops-cli are not linked shadows; they are a
+        hard copy of the repository.  Any changes you make to a the
+        checked out source of the web-ui will NOT be reflected in
+        the shadow.
+
+  Many of the underlying repository makefiles seem to do quite a
+  bit of rebuilding even though nothing has changed - there are
+  dependency problems.  However, I want to keep modifications to
+  the underlying makefiles to a minimum, so I've chosen not to
+  force rebuilds of the underlying repositories.  This means that
+  if you make changes in a checked out repository, you should
+  force a full remake of the repository by first doing a clean.
+
+  i.e. make clean-ops-fand && make ops-fand
+
+* The following make targets are supported.
+
+  make [all] - A full build of the entire system.  All debian
+               packages are found in ops-debian/build.
+
+  make <repository> - Make or remake a single repository.
+
+  make clean-<repository> - Clean up generated objects for the repository.
+
+  make checkout-<repository> - Clones the repository into the source area.
+                               You must do this before making local changes
+                               to files in a repository.  Make changes in
+                               ops-debian/src/<repository>.
+
+  make clean - Clean up generated objects for all repositories.
+
+  make distclean - Clean up all generated objects and shadow dirs.
+
+  make update-all - Update all the checked out repositories.  You must have
+                    all local changes stashed before trying to update.
+
+  sudo make apt-repo - Place the generated debian packages into a
+                       local apt repository.
+
+* The following make flags are supported.
+
+  DEBUG=[0|1] - Default =1.  Build debug images with no optimization.
+  SIMULATION  - Default =0.  Build a simulation image suitable for
+                             running on a VM.
+
+  i.e. make all DEBUG=0 SIMULATION=1
+
+* The build output and generated debian packages can be found in
+  ops-debian/build.
+
+
+#
+# Updating
+#
+
+* You must update the ops-debian repository yourself.
+  git pull --rebase
+
+
+* Running the make update-all will update all repositories that you have
+  checked out.
+
+  NOTE: The system will perform a 'make distclean' before updating.
+
+  make update-all
