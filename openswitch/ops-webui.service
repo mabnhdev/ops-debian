@@ -1,0 +1,10 @@
+[Unit]
+Description=OpenSwitch WebUI
+After=lighttpd.service restd.service
+
+[Service]
+ExecStartPre=/bin/cp /etc/lighttpd/ops-lighttpd.conf /etc/lighttpd/lighttpd.conf 
+ExecStart=/bin/systemctl restart lighttpd
+
+[Install]
+WantedBy=multi-user.target

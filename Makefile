@@ -279,8 +279,10 @@ define CLONE
 	ops-vland) commit=d2f81f2c721e7210fb1dec432bbb6e8857251d44 ;;				\
 	ops-webui) commit=5c2baf6e0acb7466a42d98b598e56134e1b7b0e5 ;;				\
 	esac ; \
-	$(ECHO) "$(CYAN)Rolling back $(1) to $(PROJECT) base $$commit.$(GRAY)" ; \
-	cd $(2)/$(1) && git checkout $$commit . ; \
+	if [ ! -z "$$commit" ] ; then \
+		$(ECHO) "$(CYAN)Rolling back $(1) to $(PROJECT) base $$commit.$(GRAY)" ; \
+		cd $(2)/$(1) && git checkout $$commit . ; \
+	fi ; \
 	if [ -f $(PATCHDIR)/$(1).diff ] ; then							\
 		$(ECHO) "$(PURPLE)Patch $(1) to $(PROJECT).$(GRAY)" ;				\
 		cd $(2)/$(1) && patch -p 1 < $(PATCHDIR)/$(1).diff ;				\
@@ -815,7 +817,7 @@ $(SHADOW)/$(WEBUI_REP):
 	@echo
 	@$(ECHO) "$(PURPLE)Preparing build environment for $(BLUE)$(WEBUI_REP) shadow dir.$(GRAY)"
 	@echo
-	$(V)(npm -v > /dev/null && node -v > /dev/null && sass -v > /dev/null) || "You must run \'setup_debian\' scipt." || false
+	$(V)(npm -v > /dev/null && node -v > /dev/null && sass -v > /dev/null) || $(ECHO) "You must run \'setup_debian\' scipt." || false
 	$(call MAKE_SHADOW,$(WEBUI_REP),COPY)
 	$(V)cd $(SHADOW)/$(WEBUI_REP) && tools/scripts/extract-node-tars
 	$(V)cd $(SHADOW)/$(WEBUI_REP) && npm rebuild node-sass
@@ -859,7 +861,7 @@ $(SHADOW)/$(OPENSWITCH_REP):
 $(OPENSWITCH_TARGET): $(SHADOW)/$(OPENSWITCH_REP)
 	$(V)$(call BUILD_AUTO,$(OPENSWITCH_REP))
 
-$(OPENSWITCH_REP): checkout-$(CLI_REP) $(ALL_REPOSITORIES) $(OPENSWITCH_TARGET)
+$(OPENSWITCH_REP): checkout-$(CLI_REP) $(SHADOW)/$(BUILD_REP) $(ALL_REPOSITORIES) $(OPENSWITCH_TARGET)
 	$(V)cp $(OPENSWITCH_TARGET) $(OPENSWITCH_INSTALL)
 
 clean-$(OPENSWITCH_REP):
@@ -899,3 +901,4 @@ checkout-all: $(CHECKOUT_REPOSITORIES)
 apt-repo:
 	$(V)reprepro -Vb /var/www/html/apt remove ecos $(ALL_APT_REPOS)
 	$(V)reprepro -Vb /var/www/html/apt includedeb ecos $(BUILDDIR)/*.deb
+

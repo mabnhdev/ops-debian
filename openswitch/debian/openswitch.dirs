@@ -1,3 +1,4 @@
+var/run/openvswitch
 usr/usr/lib/python2.7/site-packages
 lib/systemd/system
 etc/lighttpd
@@ -6,3 +7,9 @@ etc/ssl/certs
 etc/openswitch/platform
 srv/www/api
 srv/www/static
+usr/bin
+lib/systemd/system
+etc/profile.d
+etc/ops/sysctl.d
+etc/raddb
+etc/sudoers.d

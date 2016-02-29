@@ -12,14 +12,14 @@ Status/Errata
 
 * Support for the ASIC is not ported yet.
 
-* ops-cli must che checked out in order for the build to succed since
+* ops-cli must be checked out in order for the build to succed since
   there are references to the ops-cli source in the build.  You don't
   have to do anything - the makefile takes care of it, but you should
   be aware.
 
 * Debian packaging is not yet available for the new openvswitch, so
   this build reverts all repositories to a point before the new
-  openvswitch was merged in.
+  openvswitch 2.5.0 was merged into the OpenSwitch project.
 
 #########################################################################
 
