@@ -99,6 +99,9 @@ This has only been tested on Debian Jessie!!!
                                to files in a repository.  Make changes in
                                ops-debian/src/<repository>.
 
+  make distclean-<repository> - Clean up generated objects and delete the
+                                shadown directory.
+
   make clean - Clean up generated objects for all repositories.
 
   make distclean - Clean up all generated objects and shadow dirs.

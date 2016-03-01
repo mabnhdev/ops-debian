@@ -193,8 +193,28 @@ WEBUI_DEB_NAME:=$(WEBUI_REP)
 WEBUI_DEB:=$(WEBUI_DEB_NAME)-$(WEBUI_VERSION)-$(WEBUI_DEB_TYPE).deb
 WEBUI_TARGET:=$(SHADOW)/$(WEBUI_REP)/build
 
-PYPI_LIBS:=python-tornado python-certifi python-inflect python-backports_abc
-PYPI_BUILD:=$(patsubst python-%,$(BUILDDIR)/python-%-*.deb,$(PYPI_LIBS))
+#
+# Libraries from PYPI
+#
+TORNADO_NAME:=tornado
+TORNADO_REP:=python-$(TORNADO_NAME)
+TORNADO_VERSION:=4.3
+TORNADO_DEB_NAME:=$(TORNADO_REP)_$(TORNADO_VERSION)-1_amd64.deb
+CERTIFI_NAME:=certifi
+CERTIFI_REP:=python-$(CERTIFI_NAME)
+CERTIFI_VERSION:=2016.2.28
+CERTIFI_DEB_NAME:=$(CERTIFI_REP)_2016.02.28-1_all.deb
+INFLECT_NAME:=inflect
+INFLECT_REP:=python-$(INFLECT_NAME)
+INFLECT_VERSION:=0.2.5
+INFLECT_DEB_NAME:=$(INFLECT_REP)_$(INFLECT_VERSION)-1_all.deb
+BACKPORTS_NAME:=backports_abc
+BACKPORTS_REP:=python-$(BACKPORTS_NAME)
+BACKPORTS_VERSION:=0.4
+BACKPORTS_DEB_NAME:=python-backports-abc_$(BACKPORTS_VERSION)-1_all.deb
+PYPI_LIBS:=$(TORNADO_REP) $(CERTIFI_REP) $(INFLECT_REP) $(BACKPORTS_REP)
+PYPI_DEB_NAMES:=$(TORNADO_DEB_NAME) $(CERTIFI_DEB_NAME) $(INFLECT_DEB_NAME) $(BACKPORTS_DEB_NAME)
+PYPI_BUILD:=$(patsubst %,$(BUILDDIR)/%,$(PYPI_DEB_NAMES))
 PYPI_SHADOW:=$(patsubst python-%,$(SHADOW)/python-%,$(PYPI_LIBS))
 PYPI_CLEAN:=$(patsubst python-%,clean-python-%,$(PYPI_LIBS))
 PYPI_CLEAN:=$(subst clean-python-backports_abc,,$(PYPI_CLEAN))
@@ -207,9 +227,11 @@ RESTAPI_REP:=ops-restapi
 SHADOW_ONLY:=$(OPS_REP) $(HW_CONFIG_REP) $(BUILD_REP) $(RESTAPI_REP)
 SHADOW_ONLY_SHADOW:=$(patsubst %,$(SHADOW)/%,$(SHADOW_ONLY))
 
-ALL_REPOSITORIES:=$(SHADOW_ONLY) $(FAND_REP) $(ARPMGRD_REP) $(INTFD_REP) $(LEDD_REP) $(PMD_REP) $(POWERD_REP) $(PORTD_REP) $(SYSD_REP) $(TEMPD_REP) $(VLAND_REP) $(UTILS_REP) $(CONFIG-YAML_REP) $(SWITCHD-CONTAINER_REP) $(AAA-UTILS_REP) $(CFGD_REP) $(RESTD_REP) $(CLI_REP) $(OPENVSWITCH_REP) $(WEBUI_REP) $(PYPI_LIBS)
+ALL_REPOSITORIES:=$(SHADOW_ONLY) $(FAND_REP) $(ARPMGRD_REP) $(INTFD_REP) $(LEDD_REP) $(PMD_REP) $(POWERD_REP) $(PORTD_REP) $(SYSD_REP) $(TEMPD_REP) $(VLAND_REP) $(UTILS_REP) $(CONFIG-YAML_REP) $(SWITCHD-CONTAINER_REP) $(AAA-UTILS_REP) $(CFGD_REP) $(RESTD_REP) $(CLI_REP) $(OPENVSWITCH_REP) $(WEBUI_REP)
 CHECKOUT_REPOSITORIES:=$(patsubst %,checkout-%,$(ALL_REPOSITORIES))
+ALL_REPOSITORIES+=$(PYPI_LIBS)
 CLEAN_REPOSITORIES:=$(patsubst %,clean-%,$(ALL_REPOSITORIES)) clean-$(OPENSWITCH_REP)
+DISTCLEAN_REPOSITORIES:=$(patsubst %,distclean-%,$(ALL_REPOSITORIES)) distclean-$(OPENSWITCH_REP)
 
 ALL_APT_REPOS:=$(PYPI_DEBS) $(OPENSWITCH_DEB_NAME) $(OPENVSWITCH_DEB_NAME) $(OPENVSWITCH_SW_DEB_NAME) $(CLI_DEB_NAME) $(CLI_DEV_DEB_NAME) $(FAND_DEB_NAME) $(ARPMGRD_DEB_NAME) $(INTFD_DEB_NAME) $(LEDD_DEB_NAME) $(PMD_DEB_NAME) $(POWERD_DEB_NAME) $(PORTD_DEB_NAME) $(SYSD_DEB_NAME) $(TEMPD_DEB_NAME) $(VLAND_DEB_NAME) $(UTILS_DEB_NAME) $(CONFIG-YAML_DEB_NAME) $(SWITCHD-CONTAINER_DEB_NAME) $(AAA-UTILS_DEB_NAME) $(CFGD_DEB_NAME) $(RESTD_DEB_NAME) $(CLI_DEB_NAME) $(CLI_DEV_DEB_NAME) $(PYPI_DEBS)
 
@@ -312,6 +334,17 @@ define MAKE_SHADOW
 	cd - > /dev/null
 endef
 
+define MAKE_PYPI_SHADOW
+	if [ ! -d $(SHADOW)/$(1) ] ; then					\
+		mkdir -p $(SHADOW)/$(1) ;					\
+		cd $(SHADOW)/$(1) && pypi-download $(2) --release=$(3) ;	\
+	fi
+endef
+
+define BUILD_PYPI
+	cd $(SHADOW)/$(1) && py2dsc-deb $(2)-$(3).tar.gz
+endef
+
 CONFIG_PREFIX=/usr
 
 DEBUG ?= 1
@@ -375,7 +408,8 @@ endef
 
 .PHONY: all openswitch $(ALL_REPOSITORIES)
 .PHONY: libovscommon.pc libovsdb.pc $(UTILS_PC) $(CONFIG-YAML_PC) $(CLI_PC)
-.PHONY: clean distclean $(CLEAN_REPOSITORIES) $(CHECKOUT_REPOSITORIES) checkout-all
+.PHONY: clean distclean $(DISTCLEAN_REPOSITORIES) $(CLEAN_REPOSITORIES)
+.PHONY: $(CHECKOUT_REPOSITORIES) checkout-all
 
 all: openswitch
 
@@ -835,23 +869,65 @@ clean-$(WEBUI_REP):
 
 # Python Index Libs
 
-$(PYPI_SHADOW): $(SHADOW)/python-%:
-	$(V)mkdir -p $(SHADOW)/python-$*
-	$(V)cd $(SHADOW)/python-$* && pypi-download $* 
+$(SHADOW)/$(TORNADO_REP):
+	$(V)$(call MAKE_PYPI_SHADOW,$(TORNADO_REP),$(TORNADO_NAME),$(TORNADO_VERSION))
 
-$(PYPI_BUILD): $(BUILDDIR)/python-%-*.deb: $(SHADOW)/python-%
-	$(V)cd $(SHADOW)/python-$* && py2dsc-deb $*-*.tar.gz
-	$(V)cp $(SHADOW)/python-$*/deb_dist/*.deb $(BUILDDIR)
+$(SHADOW)/$(TORNADO_REP)/deb_dist/$(TORNADO_DEB_NAME): $(SHADOW)/$(TORNADO_REP)
+	$(V)$(call BUILD_PYPI,$(TORNADO_REP),$(TORNADO_NAME),$(TORNADO_VERSION))
 
-$(PYPI_LIBS): python-%: $(BUILDDIR)/python-%-*.deb
+$(BUILDDIR)/$(TORNADO_DEB_NAME): $(SHADOW)/$(TORNADO_REP)/deb_dist/$(TORNADO_DEB_NAME)
+	$(V)cp $< $@
 
-$(PYPI_CLEAN): clean-python-%:
-	$(V)rm -rf $(BUILDDIR)/python-$*_*.deb
-	$(V)rm -rf $(SHADOW)/python-$*/deb_dist
+$(TORNADO_REP): $(BUILDDIR)/$(TORNADO_DEB_NAME)
 
-clean-python-backports_abc:
-	$(V)rm -rf $(BUILDDIR)/python-backports*.deb
-	$(V)rm -rf $(SHADOW)/python-backports_abc/deb_dist
+clean-$(TORNADO_REP):
+	$(V)rm -f $(BUILDDIR)/$(TORNADO_DEB_NAME) > /dev/null || true
+	$(V)rm -rf $(SHADOW)/$(TORNADO_REP)/deb_dist > /dev/null || true
+
+$(SHADOW)/$(CERTIFI_REP):
+	$(V)$(call MAKE_PYPI_SHADOW,$(CERTIFI_REP),$(CERTIFI_NAME),$(CERTIFI_VERSION))
+
+$(SHADOW)/$(CERTIFI_REP)/deb_dist/$(CERTIFI_DEB_NAME): $(SHADOW)/$(CERTIFI_REP)
+	$(V)$(call BUILD_PYPI,$(CERTIFI_REP),$(CERTIFI_NAME),$(CERTIFI_VERSION))
+
+$(BUILDDIR)/$(CERTIFI_DEB_NAME): $(SHADOW)/$(CERTIFI_REP)/deb_dist/$(CERTIFI_DEB_NAME)
+	$(V)cp $< $@
+
+$(CERTIFI_REP): $(BUILDDIR)/$(CERTIFI_DEB_NAME)
+
+clean-$(CERTIFI_REP):
+	$(V)rm -f $(BUILDDIR)/$(CERTIFI_DEB_NAME) > /dev/null || true
+	$(V)rm -rf $(SHADOW)/$(CERTIFI_REP)/deb_dist > /dev/null || true
+
+$(SHADOW)/$(INFLECT_REP):
+	$(V)$(call MAKE_PYPI_SHADOW,$(INFLECT_REP),$(INFLECT_NAME),$(INFLECT_VERSION))
+
+$(SHADOW)/$(INFLECT_REP)/deb_dist/$(INFLECT_DEB_NAME): $(SHADOW)/$(INFLECT_REP)
+	$(V)$(call BUILD_PYPI,$(INFLECT_REP),$(INFLECT_NAME),$(INFLECT_VERSION))
+
+$(BUILDDIR)/$(INFLECT_DEB_NAME): $(SHADOW)/$(INFLECT_REP)/deb_dist/$(INFLECT_DEB_NAME)
+	$(V)cp $< $@
+
+$(INFLECT_REP): $(BUILDDIR)/$(INFLECT_DEB_NAME)
+
+clean-$(INFLECT_REP):
+	$(V)rm -f $(BUILDDIR)/$(INFLECT_DEB_NAME) > /dev/null || true
+	$(V)rm -rf $(SHADOW)/$(INFLECT_REP)/deb_dist > /dev/null || true
+
+$(SHADOW)/$(BACKPORTS_REP):
+	$(V)$(call MAKE_PYPI_SHADOW,$(BACKPORTS_REP),$(BACKPORTS_NAME),$(BACKPORTS_VERSION))
+
+$(SHADOW)/$(BACKPORTS_REP)/deb_dist/$(BACKPORTS_DEB_NAME): $(SHADOW)/$(BACKPORTS_REP)
+	$(V)$(call BUILD_PYPI,$(BACKPORTS_REP),$(BACKPORTS_NAME),$(BACKPORTS_VERSION))
+
+$(BUILDDIR)/$(BACKPORTS_DEB_NAME): $(SHADOW)/$(BACKPORTS_REP)/deb_dist/$(BACKPORTS_DEB_NAME)
+	$(V)cp $< $@
+
+$(BACKPORTS_REP): $(BUILDDIR)/$(BACKPORTS_DEB_NAME)
+
+clean-$(BACKPORTS_REP):
+	$(V)rm -f $(BUILDDIR)/$(BACKPORTS_DEB_NAME) > /dev/null || true
+	$(V)rm -rf $(SHADOW)/$(BACKPORTS_REP)/deb_dist > /dev/null || true
 
 # openswitch
 
@@ -874,6 +950,9 @@ clean: $(CLEAN_REPOSITORIES) clean-$(OPENSWITCH_REP)
 	$(V)rm -rf $(BUILDDIR)/etc || true
 	$(V)rm -rf $(BUILDDIR)/var || true
 	$(V)rm -rf $(BUILDDIR)/ops-cli_*.tar.gz || true
+
+$(DISTCLEAN_REPOSITORIES): distclean-%: clean-%
+	$(V)rm -rf $(SHADOW)/$* > /dev/null || true
 
 distclean: clean
 	$(V)rm -rf build || true
