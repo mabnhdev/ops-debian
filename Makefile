@@ -303,7 +303,7 @@ define CLONE
 	esac ; \
 	if [ ! -z "$$commit" ] ; then \
 		$(ECHO) "$(CYAN)Rolling back $(1) to $(PROJECT) base $$commit.$(GRAY)" ; \
-		cd $(2)/$(1) && git checkout $$commit . ; \
+		cd $(2)/$(1) && git reset --hard $$commit ; \
 	fi ; \
 	if [ -f $(PATCHDIR)/$(1).diff ] ; then							\
 		$(ECHO) "$(PURPLE)Patch $(1) to $(PROJECT).$(GRAY)" ;				\
