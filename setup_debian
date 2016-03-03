@@ -7,7 +7,7 @@ set -e
 ###########################################################
 
 # Required/recommended Libraries
-sudo apt-get install -y --no-install-recommends gawk wget git gitk diffstat unzip texinfo gcc-multilib build-essential chrpath screen curl device-tree-compiler xterm gperf quilt cpio lsb-release cmake libyaml-cpp0.3-dev libgtest-dev zlib1g-dev libi2c-dev systemd lintian reprepro dh-make emacs python2.7 python2.7-dev python-openvswitch python-pip python-dev python-all-dev xutils-dev libreadline6-dev ruby dh-autoreconf libcap-dev
+sudo apt-get install -y --no-install-recommends gawk wget git gitk diffstat unzip texinfo gcc-multilib build-essential chrpath screen curl device-tree-compiler xterm gperf quilt cpio lsb-release cmake libyaml-cpp0.3-dev libgtest-dev zlib1g-dev libi2c-dev systemd lintian reprepro dh-make emacs python2.7 python2.7-dev python-openvswitch python-pip python-dev python-all-dev xutils-dev libreadline6-dev ruby dh-autoreconf libcap-dev libtdl-dev
 
 # WebUI build environment
 sudo apt-get remove -y nodejs npm || true
