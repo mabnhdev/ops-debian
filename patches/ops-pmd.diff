@@ -37,3 +37,81 @@ index 7cd75fc..d1343a7 100644
 +SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Detects and identifies pluggable transceivers (SFP, SFP+, QSFP).")
 +SET(CPACK_GENERATOR "DEB")
 +INCLUDE(CPack)
+diff --git a/src/plug.c b/src/plug.c
+index 9147ad4..eb447e0 100644
+--- a/src/plug.c
++++ b/src/plug.c
+@@ -212,6 +212,39 @@ retry_read:
+ #endif
+ }
+ 
++#ifndef PLATFORM_SIMULATION
++#ifdef ALPHA_ZION_PROTO
++static int
++pm_do_select(pm_port_t *port, i2c_op **select_cmds)
++{
++    i2c_op           op;
++    i2c_op *         cmds[2];
++    int              rc;
++    int              i;
++    const YamlDevice *select_device;
++    
++    for (i = 0, rc = 0; select_cmds[i]; i++) {
++        op = *select_cmds[i];
++        op.direction = WRITE;
++        op.set_register = true;
++        op.negative_polarity = false;
++
++        cmds[0] = &op;
++        cmds[1] = NULL;
++
++        select_device = yaml_find_device(global_yaml_handle,
++                                         port->subsystem,
++                                         op.device);
++        rc = i2c_execute(global_yaml_handle, port->subsystem, select_device, cmds);
++        if (rc != 0)
++            break;
++    }
++    
++    return rc;
++}
++#endif /* ALPHA_ZION_PROTO */
++#endif
++
+ static int
+ pm_read_a0(pm_port_t *port, unsigned char *data, size_t offset)
+ {
+@@ -232,6 +265,18 @@ pm_read_a0(pm_port_t *port, unsigned char *data, size_t offset)
+     // get device for module eeprom
+     device = yaml_find_device(global_yaml_handle, port->subsystem, port->module_device->module_eeprom);
+ 
++#ifdef ALPHA_ZION_PROTO
++    // EXTREME - for proto snh60a0-320f only
++    // Construct the i2c operation to select the device   
++    if (device->select) {
++        rc = pm_do_select(port, device->select);
++        if (rc != 0) {
++            VLOG_ERR("module select failed: %s", port->instance);
++            return -1;
++        }
++    }
++#endif /* ALPHA_ZION_PROTO */
++
+     // construct the i2c operation to read the data
+     op.direction = READ;
+     op.device = device->name;
+@@ -246,6 +291,14 @@ pm_read_a0(pm_port_t *port, unsigned char *data, size_t offset)
+ 
+     rc = i2c_execute(global_yaml_handle, port->subsystem, device, cmds);
+ 
++#ifdef ALPHA_ZION_PROTO
++    // EXTREME - for proto snh60a0-320f only
++    // Construct the i2c operation to deselect the device   
++    if (device->deselect) {
++        pm_do_select(port, device->deselect);
++    }
++#endif /* ALPHA_ZION_PROTO */
++
+     if (rc != 0) {
+         VLOG_ERR("module read failed: %s", port->instance);
+         return -1;

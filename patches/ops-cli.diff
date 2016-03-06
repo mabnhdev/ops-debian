@@ -151,15 +151,17 @@ new file mode 100644
 index 0000000..6845771
 --- /dev/null
 +++ b/debian/ops-cli.dirs
-@@ -0,0 +1 @@
+@@ -0,0 +1,2 @@
 +usr/lib
++usr/bin
 diff --git a/debian/ops-cli.install b/debian/ops-cli.install
 new file mode 100644
 index 0000000..d0dbfd1
 --- /dev/null
 +++ b/debian/ops-cli.install
-@@ -0,0 +1 @@
+@@ -0,0 +1,2 @@
 +usr/lib/lib*.so.*
++usr/bin/vtysh
 diff --git a/debian/rules b/debian/rules
 new file mode 100755
 index 0000000..78122e7

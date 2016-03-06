@@ -53,3 +53,105 @@ index fe110eb..c59ff40 100644
 +SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION "System initialization daemon.")
 +SET(CPACK_GENERATOR "DEB")
 +INCLUDE(CPack)
+diff --git a/src/sysd_fru.c b/src/sysd_fru.c
+index 305e336..77af830 100644
+--- a/src/sysd_fru.c
++++ b/src/sysd_fru.c
+@@ -185,6 +185,50 @@ sysd_process_eeprom(unsigned char *buf, fru_eeprom_t *fru_eeprom, int len)
+         buf += skip;
+     }
+ 
++    /* EXTREME: Deal with rev 0 hardware */
++    if (fru_eeprom->num_macs == 0) {
++      unsigned int mac[FRU_BASE_MAC_ADDRESS_LEN];
++      FILE *f = fopen("/sys/class/net/eth0/address", "r");
++      if ((f) && (fscanf(f, "%x:%x:%x:%x:%x:%x",
++			 &mac[0], &mac[1], &mac[2],
++			 &mac[3], &mac[4], &mac[5]) == 6)) {
++	int i;
++	for (i = 0; i < 6; i++)
++	  fru_eeprom->base_mac_address[i] = mac[i];
++	fru_eeprom->num_macs = 32;
++        VLOG_INFO("Base MAC not found in FRU EEPROM.  "
++                  "Using mac %02x:%02x:%02x:%02x:%02x:%02x.",
++                  mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
++      } else {
++	VLOG_ERR("Cannot obtain base MAC Address.");
++      }
++      if (f)
++	fclose(f);
++    }
++    if (!strlen(fru_eeprom->country_code))
++      strncpy(fru_eeprom->country_code, "US", FRU_COUNTRY_CODE_LEN);
++    if (!fru_eeprom->diag_version)
++      fru_eeprom->diag_version = strdup("1.0.0.0");
++    if (!fru_eeprom->label_revision)
++      fru_eeprom->label_revision = strdup("L01");
++    if (!strlen(fru_eeprom->manufacture_date))
++      strncpy(fru_eeprom->manufacture_date, "09/01/2015 00:00:01",
++            FRU_MANUFACTURE_DATE_LEN);
++    if (!fru_eeprom->manufacturer)
++      fru_eeprom->manufacturer = strdup("Alphanetworks");
++    if (!fru_eeprom->onie_version)
++      fru_eeprom->onie_version = strdup("2014.08.00.05");
++    if (!fru_eeprom->part_number)
++      fru_eeprom->part_number = strdup("SNH60A0-320F");
++    if (!fru_eeprom->platform_name)
++      fru_eeprom->platform_name = strdup("Generic-x86-64");
++    if (!fru_eeprom->product_name)
++      fru_eeprom->product_name = strdup("OpenSwitch");
++    if (!fru_eeprom->serial_number)
++      fru_eeprom->serial_number = strdup("X8664001");
++    if (!fru_eeprom->vendor)
++      fru_eeprom->vendor = strdup("Extreme");
++
+     return (true);
+ } /* sysd_process_eeprom() */
+ 
+diff --git a/src/sysd_util.c b/src/sysd_util.c
+index d4d62bb..920cc19 100644
+--- a/src/sysd_util.c
++++ b/src/sysd_util.c
+@@ -129,6 +129,21 @@ get_manuf_and_prodname(char *cmd_path, char **manufacturer, char **product_name)
+         return;
+     }
+ 
++    /* Normalize Alphanetworks name since they have many varieties */
++    else if ((strcasecmp(*manufacturer, "alphanetworks") == 0) &&
++             (strcmp(*manufacturer, "Alphanetworks") != 0)) {
++        free(*manufacturer);
++        *manufacturer = strdup("Alphanetworks");
++    }
++
++#ifdef ALPHA_ZION_PROTO
++    /* EXTREME: Deal with rev 0 hardware */
++    else if (strstr(*manufacturer, "To be filled by O.E.M.")) {
++        free(*manufacturer);
++        *manufacturer = strdup("Alphanetworks");
++    }
++#endif /* ALPHA_ZION_PROTO */
++
+     snprintf(dmid_cmd, sizeof(dmid_cmd), "%s -s %s",
+              cmd_path, "system-product-name");
+ 
+@@ -137,6 +152,20 @@ get_manuf_and_prodname(char *cmd_path, char **manufacturer, char **product_name)
+         VLOG_ERR("Unable to get system product name.");
+         return;
+     }
++
++    /* Map Alphanetworks/Rangeley */
++    else if ((strcmp(*product_name, "Rangeley") == 0) &&
++             (strcmp(*manufacturer, "Alphanetworks") == 0)) {
++        free(*product_name);
++        *product_name = strdup("SNX60A0-486F");
++    }
++#ifdef ALPHA_ZION_PROTO
++    /*  EXTREME: Deal with rev 0 hardware */
++    else if (strstr(*product_name, "To be filled by O.E.M.")) {
++      free(*product_name);
++      *product_name = strdup("SNH60A0-320F-PROTO");
++    }
++#endif /* ALPHA_ZION_PROTO */
+     return;
+ 
+ } /* get_manuf_and_prodname() */

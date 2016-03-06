@@ -20,3 +20,959 @@ index 73b4fd0..1f10493 100644
 +SET(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_CURRENT_SOURCE_DIR}/postinst")
 +SET(CPACK_GENERATOR "DEB")
 +INCLUDE(CPack)
+diff --git a/include/config-yaml.h b/include/config-yaml.h
+index 3f11b64..8a281f8 100644
+--- a/include/config-yaml.h
++++ b/include/config-yaml.h
+@@ -48,6 +48,7 @@
+ extern "C" {
+ #endif
+ 
++#include <inttypes.h>
+ #include "i2c.h"
+ 
+ #define SFPP    "SFP_PLUS"      /*!< String to identify SFP+ modules */
+@@ -79,6 +80,17 @@ typedef struct {
+     char    *name;      /*!< name identify for the yaml file */
+     char    *filename;  /*!< filename for the yaml file */
+ } YamlFile;
++  
++
++/************************************************************************//**
++ * ENUM defining possible values for device address size.
++ * Note that typically the only devices that are not the default
++ * size of 8-bits are large EEPROM devices.
++ ***************************************************************************/
++typedef enum {
++    SIZE_8_BITS,    /*!< Default value of 8 bit addresses. */
++    SIZE_16_BITS,   /*!< Default value of 16 bit addresses. */
++} YamlDeviceAddressSize;
+ 
+ /************************************************************************//**
+  * STRUCT that contains the content of the device section of the
+@@ -91,6 +103,11 @@ typedef struct {
+     int     address;    /*!< Address for the device on the bus */
+     i2c_op  **pre;      /*!< i2c pre operation */
+     i2c_op  **post;     /*!< i2c post operation */
++    YamlDeviceAddressSize address_size; /*< size of device address. */
++#ifdef ALPHA_ZION_PROTO
++    i2c_op  **select;   /*!< i2c select operation */
++    i2c_op  **deselect; /*!< i2c deselect operation */
++#endif /* ALPHA_ZION_PROTO */
+ } YamlDevice;
+ 
+ /************************************************************************//**
+@@ -230,7 +247,8 @@ typedef struct {
+  ***************************************************************************/
+ typedef enum {
+     SINGLE,         /*!< Commands apply to all fans in this fan FRU */
+-    PER_FAN         /*!< Commands apply per fan in this fan FRU */
++    PER_FAN,        /*!< Commands apply per fan in this fan FRU */
++    PER_FRU         /*!< Commands apply per fan FRU */
+ } YamlFanControlType;
+ 
+ /************************************************************************//**
+@@ -288,6 +306,15 @@ typedef struct {
+ } YamlLedValues;
+ 
+ /************************************************************************//**
++ * STRUCT that contains the list of fan speed controls found in the fan_info
++      section of the fans.yaml file.
++ ***************************************************************************/
++typedef struct {
++    char        *name;      /*!< Name identified of the Fan Control */
++    i2c_bit_op  *speed;     /*!< op values for controlling fan speed */
++} YamlFanSpeedControl;
++
++/************************************************************************//**
+  * STRUCT that contains the content of the fan_info section of the fans.yaml
+  *    file.
+  ***************************************************************************/
+@@ -295,15 +322,17 @@ typedef struct {
+     int                 number_fan_frus;    /*!< Number of Fan FRUs(not fans) */
+     int                 fans_per_fru;       /*!< Number of Fans per FRU */
+     YamlFanControlType  fan_speed_control_type; /*!< YamlFanControlType */
+-    i2c_bit_op          *fan_speed_control; /*!< Op to set fan speed */
++    i2c_bit_op          *fan_speed_control; /*!< Ops to set SINGLE fan speed */
+     YamlFanSpeed        fan_speed_min;      /*!< Minimum fan speed */
+     YamlSpeedSettings   fan_speed_settings; /*!< Values for each speed  */
+     YamlFanDirection    direction;          /*!< Airflow direction */
+     i2c_bit_op          *fan_direction_control; /*!< dir ctrl op values */
+     YamlDirectionValues direction_values;   /*!< op values to set direction */
+     YamlDirectionValues direction_control_values; /*!< dir ctrl values */
+-    int                 fan_speed_multiplier; /*!< multiplier to set speed */
++    int                 fan_speed_multiplier; /*!< multiplier to calculate speed */
++    int                 fan_speed_numerator;  /*!< numerator to caluclate speed */
+     YamlLedValues       fan_led_values;     /*!< Fan LED values */
++    i2c_bit_op          *fan_led;           /*!< op values to access the LED */
+ } YamlFanInfo;
+ 
+ /************************************************************************//**
+@@ -313,7 +342,9 @@ typedef struct {
+ typedef struct {
+     char        *name;      /*!< Name identified of the Fan */
+     i2c_bit_op  *fan_fault; /*!< op values for accessing fan fault */
+-    i2c_bit_op  *fan_speed; /*!< op values for accessing fan speed */
++    i2c_bit_op  *fan_speed; /*!< op values for accessing fan speed (lsb) */
++    i2c_bit_op  *fan_speed_msb; /*!< op values for accessing fan speed (msb) */
++    i2c_bit_op  *fan_speed_control; /*!< Ops to set PER_FAN fan speed */
+ } YamlFan;
+ 
+ /************************************************************************//**
+@@ -325,6 +356,8 @@ typedef struct {
+     YamlFan     **fans;     /*!< YamlFan pointers for fans in the FRU */
+     i2c_bit_op  *fan_leds;  /*!< op values to access the LEDs */
+     i2c_bit_op  *fan_direction_detect; /*!< op values to set fan direction */
++    i2c_bit_op  *fan_speed_control; /*!< Ops to set PER_FRU fan speed */
++    i2c_bit_op  *fan_present; /*!< Ops to determine if fru is present */
+ } YamlFanFru;
+ 
+ /************************************************************************//**
+@@ -334,6 +367,8 @@ typedef struct {
+ typedef struct {
+     int         number_psus;    /*!< Number of power supplies */
+     int         polling_period; /*!< Polling period in milisecsonds */
++    YamlLedValues psu_led_values; /*!< Fan LED values */
++    i2c_bit_op  *psu_led;       /*!< op values to access the LED */
+ } YamlPsuInfo;
+ 
+ /************************************************************************//**
+@@ -352,7 +387,8 @@ typedef struct {
+  ***************************************************************************/
+ typedef enum {
+     LED_UNKNOWN,    /*!< Type unknown */
+-    LED_LOC         /*!< Type is "loc" for location */
++    LED_LOC,        /*!< Type is "loc" for location */
++    LED_SYSTEM      /*!< Type is "system" for location */
+ } YamlLedTypeValue;
+ 
+ /************************************************************************//**
+@@ -618,6 +654,59 @@ extern int yaml_parse_psus(YamlConfigHandle handle, const char *subsyst);
+ extern int yaml_parse_leds(YamlConfigHandle handle, const char *subsyst);
+ 
+ /************************************************************************//**
++ * Perform a data read from the specified i2c device
++ *
++ * @param[in] handle    :YamlConfigHandle for this subsystem
++ * @param[in] device    :Device to operate on
++ * @param[in] subsyst   :Name of the subsystem
++ * @param[in] offset    :Start offset of the read.
++ * @param[in] len       :Number of bytes to read.
++ * @param[out] data      :Data read.
++ *
++ * @return 0 on success, else errno on failure
++ ***************************************************************************/
++extern int i2c_data_read(YamlConfigHandle handle, const YamlDevice *device, const char *subsyst, const size_t offset, const size_t len, void *data);
++
++/************************************************************************//**
++ * Perform a data write to the specified i2c device
++ *
++ * @param[in] handle    :YamlConfigHandle for this subsystem
++ * @param[in] device    :Device to operate on
++ * @param[in] subsyst   :Name of the subsystem
++ * @param[in] offset    :Start offset of the write.
++ * @param[in] len       :Number of bytes to write.
++ * @param[in] data      :Data to be written.
++ *
++ * @return 0 on success, else errno on failure
++ ***************************************************************************/
++extern int i2c_data_write(YamlConfigHandle handle, const YamlDevice *device, const char *subsyst, const size_t offset, const size_t len, void *data);
++
++/************************************************************************//**
++ * Perform a register read for the specified i2c device
++ *
++ * @param[in] handle    :YamlConfigHandle for this subsystem
++ * @param[in] subsyst   :Name of the subsystem
++ * @param[in] reg_op    :Register to operate on
++ * @param[out] val      :Value read from register.
++ *
++ * @return 0 on success, else errno on failure
++ ***************************************************************************/
++extern int i2c_reg_read(YamlConfigHandle handle, const char *subsyst, const i2c_bit_op *reg_op, uint32_t *val);
++extern int
++
++/************************************************************************//**
++ * Perform a register write for the specified i2c device
++ *
++ * @param[in] handle    :YamlConfigHandle for this subsystem
++ * @param[in] subsyst   :Name of the subsystem
++ * @param[in] reg_op    :Register to operate on
++ * @param[in] val       :Value to write.
++ *
++ * @return 0 on success, else errno on failure
++ ***************************************************************************/
++i2c_reg_write(YamlConfigHandle handle, const char *subsyst, const i2c_bit_op *reg_op, const uint32_t val);
++
++/************************************************************************//**
+  * Performs the list of i2c commands for the specified i2c device
+  *
+  * @param[in] handle    :YamlConfigHandle for this subsystem
+diff --git a/include/i2c.h b/include/i2c.h
+index 4bcfe67..21218f5 100644
+--- a/include/i2c.h
++++ b/include/i2c.h
+@@ -20,6 +20,7 @@
+ #ifndef __cplusplus
+ #include <stdbool.h>
+ #endif
++#include <inttypes.h>
+ 
+ #define WRITE   true
+ #define READ    false
+@@ -29,17 +30,18 @@ typedef struct {
+     char            *device;
+     int             byte_count;
+     bool            set_register;
+-    unsigned char   register_address;
++    uint16_t        register_address;
+     unsigned char   *data;
+     bool            negative_polarity;
+ } i2c_op;
+ 
+ typedef struct {
+     char            *device;
+-    unsigned char   register_address;
++    uint16_t        register_address;
+     unsigned char   register_size;      // 1, 2, or 4 byte register
+     unsigned char   bit_mask;
+     bool            negative_polarity;
++    unsigned char   field_shift;
+ } i2c_bit_op;
+ 
+ #endif
+diff --git a/src/config-yaml.cpp b/src/config-yaml.cpp
+index 3f3fe0f..d2c294e 100644
+--- a/src/config-yaml.cpp
++++ b/src/config-yaml.cpp
+@@ -163,6 +163,14 @@ static void operator >> (const YAML::Node &node, YamlDevice &device)
+ 
+     node["address"] >> device.address;
+ 
++    device.address_size = SIZE_8_BITS;
++    if (const YAML::Node *pSize = node.FindValue("address-size")) {
++        int addr_size;
++        *pSize >> addr_size;
++        if (addr_size == 2)
++            device.address_size = SIZE_16_BITS;
++    }
++
+     if (const YAML::Node *pName = node.FindValue("pre")) {
+         vector<i2c_op> pre;
+         *pName >> pre;
+@@ -190,6 +198,41 @@ static void operator >> (const YAML::Node &node, YamlDevice &device)
+     } else {
+         device.post = NULL;
+     }
++
++#ifdef ALPHA_ZION_PROTO
++    /* EXTREME: pre & post work fine for navigating the mux topology
++     *          but it falls apart when accessing devices behind
++     *          muxes for the purposes of selecting a device.
++     *          We must treat these as autonomous operations.
++     */
++    if (const YAML::Node *pName = node.FindValue("select")) {
++        vector<i2c_op> select;
++        *pName >> select;
++
++        device.select = (i2c_op **)calloc(sizeof(i2c_op *), select.size() + 1);
++
++        for (size_t idx = 0; idx < select.size(); idx++) {
++            device.select[idx] = (i2c_op *)malloc(sizeof(i2c_op));
++            *device.select[idx] = select[idx];
++        }
++    } else {
++        device.select = NULL;
++    }
++
++    if (const YAML::Node *pName = node.FindValue("deselect")) {
++        vector<i2c_op> deselect;
++        *pName >> deselect;
++
++        device.deselect = (i2c_op **)calloc(sizeof(i2c_op *), deselect.size() + 1);
++
++        for (size_t idx = 0; idx < deselect.size(); idx++) {
++            device.deselect[idx] = (i2c_op *)malloc(sizeof(i2c_op));
++            *device.deselect[idx] = deselect[idx];
++        }
++    } else {
++        device.deselect = NULL;
++    }
++#endif /* ALPHA_ZION_PROTO */
+ }
+ 
+ static void operator >> (const YAML::Node &node, map<string, YamlDevice> &devices)
+@@ -264,6 +307,7 @@ static void operator >> (const YAML::Node &node, i2c_bit_op &op)
+     op.bit_mask = (unsigned char)strtoul(str.c_str(), 0, 0);
+     op.register_size = str.size()/2 - 1;    // must be hex bytes with leading 0x!
+ 
++    op.negative_polarity = false;
+     if (const YAML::Node *pNode = node.FindValue("polarity")) {
+         string str;
+         *pNode >> str;
+@@ -272,6 +316,12 @@ static void operator >> (const YAML::Node &node, i2c_bit_op &op)
+             op.negative_polarity = true;
+         }
+     }
++
++    if (const YAML::Node *pNode = node.FindValue("shift")) {
++        *pNode >> str;
++        op.field_shift = (unsigned char)strtoul(str.c_str(), 0, 0);
++    } else
++        op.field_shift = 0;
+ }
+ 
+ static void operator >> (const YAML::Node &node, YamlQsfpModuleSignals &signals)
+@@ -515,10 +565,30 @@ static void operator >> (const YAML::Node &node, vector<YamlLed> &leds)
+     }
+ }
+ 
++static void operator >> (const YAML::Node &node, YamlLedValues &values)
++{
++    string str;
++
++    node["OFF"] >> str;
++    values.off = strtol(str.c_str(), 0, 0);
++    node["GOOD"] >> str;
++    values.good = strtol(str.c_str(), 0, 0);
++    node["FAULT"] >> str;
++    values.fault = strtol(str.c_str(), 0, 0);
++}
++
+ static void operator >> (const YAML::Node &node, YamlPsuInfo &psu_info)
+ {
++    if (const YAML::Node *pNode = node.FindValue("psu_led_values")) {
++        *pNode >> psu_info.psu_led_values;
++    }
+     node["number_psus"] >> psu_info.number_psus;
+     node["polling_period"] >> psu_info.polling_period;
++    if (const YAML::Node *pNode = node.FindValue("psu_led")) {
++        i2c_bit_op *op = (i2c_bit_op *)malloc(sizeof(i2c_bit_op));
++        *pNode >> *op;
++        psu_info.psu_led = op;
++    }
+ }
+ 
+ static void operator >> (const YAML::Node &node, YamlPsu &psu)
+@@ -605,23 +675,13 @@ static void operator >> (const YAML::Node &node, YamlFanControlType &control)
+         control = SINGLE;
+     } else if (str == "PER_FAN") {
+         control = PER_FAN;
++    } else if (str == "PER_FRU") {
++        control = PER_FRU;
+     } else {
+         throw "FanControlType value is incorrect: " + str;
+     }
+ }
+ 
+-static void operator >> (const YAML::Node &node, YamlLedValues &values)
+-{
+-    string str;
+-
+-    node["OFF"] >> str;
+-    values.off = strtol(str.c_str(), 0, 0);
+-    node["GOOD"] >> str;
+-    values.good = strtol(str.c_str(), 0, 0);
+-    node["FAULT"] >> str;
+-    values.fault = strtol(str.c_str(), 0, 0);
+-}
+-
+ static void operator >> (const YAML::Node &node, YamlDirectionValues &values)
+ {
+     string str;
+@@ -651,12 +711,15 @@ static void operator >> (const YAML::Node &node, YamlSpeedSettings &settings)
+ 
+ static void operator >> (const YAML::Node &node, YamlFanInfo &info)
+ {
+-    i2c_bit_op *op = (i2c_bit_op *)malloc(sizeof(i2c_bit_op));
++    i2c_bit_op *op;
+ 
+     node["number_fan_frus"] >> info.number_fan_frus;
+     node["fan_speed_control_type"] >> info.fan_speed_control_type;
+-    node["fan_speed_control"] >> *op;
+-    info.fan_speed_control = op;
++    if (const YAML::Node *pNode = node.FindValue("fan_speed_control")) {
++	op = (i2c_bit_op *)malloc(sizeof(i2c_bit_op));
++        *pNode >> *op;
++        info.fan_speed_control = op;
++    }
+     node["fan_speed_min"] >> info.fan_speed_min;
+     node["fan_speed_settings"] >> info.fan_speed_settings;
+     node["fan_direction"] >> info.direction;
+@@ -675,8 +738,19 @@ static void operator >> (const YAML::Node &node, YamlFanInfo &info)
+     }
+ 
+     node["fan_direction_values"] >> info.direction_values;
+-    node["fan_speed_multiplier"] >> info.fan_speed_multiplier;
++    if (const YAML::Node *pNode = node.FindValue("fan_speed_multiplier")) {
++      *pNode >> info.fan_speed_multiplier;
++    }
++    if (const YAML::Node *pNode = node.FindValue("fan_speed_numerator")) {
++      *pNode >> info.fan_speed_numerator;
++    }
+     node["fan_led_values"] >> info.fan_led_values;
++
++    if (const YAML::Node *pNode = node.FindValue("fan_led")) {
++        op = (i2c_bit_op *)malloc(sizeof(i2c_bit_op));
++        *pNode >> *op;
++        info.fan_led = op;
++    }
+ }
+ 
+ static void operator >> (const YAML::Node &node, YamlFan &fan)
+@@ -688,10 +762,24 @@ static void operator >> (const YAML::Node &node, YamlFan &fan)
+     fan.name = strdup(str.c_str());
+     node["fault"] >> *op;
+     fan.fan_fault = op;
++    
++    if (const YAML::Node *pNode = node.FindValue("fan_speed_control")) {
++	op = (i2c_bit_op *)malloc(sizeof(i2c_bit_op));
++        *pNode >> *op;
++        fan.fan_speed_control = op;
++    } else
++        fan.fan_speed_control = NULL;
+ 
+     op = (i2c_bit_op *)malloc(sizeof(i2c_bit_op));
+     node["speed"] >> *op;
+     fan.fan_speed = op;
++    
++    if (const YAML::Node *pNode = node.FindValue("speed_msb")) {
++	op = (i2c_bit_op *)malloc(sizeof(i2c_bit_op));
++        *pNode >> *op;
++        fan.fan_speed_msb = op;
++    } else
++        fan.fan_speed_msb = NULL;
+ }
+ 
+ static void operator >> (const YAML::Node &node, vector<YamlFan> &fans)
+@@ -706,15 +794,32 @@ static void operator >> (const YAML::Node &node, vector<YamlFan> &fans)
+ static void operator >> (const YAML::Node &node, YamlFanFru &fan_fru)
+ {
+     i2c_bit_op *op = (i2c_bit_op *)malloc(sizeof(i2c_bit_op));
+-
+     node["number"] >> fan_fru.number;
+-    node["fan_leds"] >> *op;
+-    fan_fru.fan_leds = op;
+ 
+-    op = (i2c_bit_op *)malloc(sizeof(i2c_bit_op));
+     node["fan_direction_detect"] >> *op;
+     fan_fru.fan_direction_detect = op;
+ 
++    if (const YAML::Node *pNode = node.FindValue("fan_leds")) {
++        op = (i2c_bit_op *)malloc(sizeof(i2c_bit_op));
++        *pNode >> *op;
++        fan_fru.fan_leds = op;
++    } else
++        fan_fru.fan_leds = NULL;
++    
++    if (const YAML::Node *pNode = node.FindValue("fan_speed_control")) {
++	op = (i2c_bit_op *)malloc(sizeof(i2c_bit_op));
++        *pNode >> *op;
++        fan_fru.fan_speed_control = op;
++    } else
++        fan_fru.fan_speed_control = NULL;
++    
++    if (const YAML::Node *pNode = node.FindValue("fan_present")) {
++	op = (i2c_bit_op *)malloc(sizeof(i2c_bit_op));
++        *pNode >> *op;
++        fan_fru.fan_present = op;
++    } else
++        fan_fru.fan_present = NULL;
++
+     vector<YamlFan> fans;
+ 
+     node["fans"] >> fans;
+@@ -814,13 +919,19 @@ init_info_fields(YamlSubsystem *sub)
+     sub->fan_info.direction_control_values.f2b = '\0';
+     sub->fan_info.direction_control_values.b2f = '\0';
+     sub->fan_info.fan_speed_multiplier = 0;
++    sub->fan_info.fan_speed_numerator = 0;
+     sub->fan_info.fan_led_values.off = '\0';
+     sub->fan_info.fan_led_values.good = '\0';
+     sub->fan_info.fan_led_values.fault = '\0';
++    sub->fan_info.fan_led = NULL;
+ 
+     // YamlPsuInfo
+     sub->psu_info.number_psus = 0;
+     sub->psu_info.polling_period = 0;
++    sub->psu_info.psu_led_values.off = '\0';
++    sub->psu_info.psu_led_values.good = '\0';
++    sub->psu_info.psu_led_values.fault = '\0';
++    sub->psu_info.psu_led = NULL;
+ 
+     // YamlLedInfo
+     sub->led_info.number_leds = 0;
+diff --git a/src/i2c.c b/src/i2c.c
+index 585cd74..a4968b7 100644
+--- a/src/i2c.c
++++ b/src/i2c.c
+@@ -22,11 +22,19 @@
+ #include <string.h>
+ #include <unistd.h>
+ #include <sys/file.h>
++#include <inttypes.h>
++#include <endian.h>
+ 
+ #include <linux/i2c-dev-user.h>
+ 
+ #include "config-yaml.h"
+ 
++/*
++#define I2C_DEBUG_WO
++#define I2C_DEBUG_RO
++#define I2C_DEBUG
++*/
++
+ static int
+ count_ops(i2c_op **ops)
+ {
+@@ -146,6 +154,115 @@ add_cmds(i2c_op **ops, i2c_op **cmds, int idx)
+     return(idx);
+ }
+ 
++static int
++i2c_do_smb_extended_address_io(int fd, i2c_op *cmd)
++{
++    int rc;
++    int i;
++
++    /* 16-bit address */
++    rc = i2c_smbus_write_byte_data(fd, (uint8_t)(cmd->register_address >> 8),
++                                   (uint8_t)cmd->register_address & 0xff);
++    if (rc < 0)
++        return errno;
++
++    for (i = 0; i < cmd->byte_count; i++) {
++        if (cmd->direction) {
++            /* write */
++            rc = i2c_smbus_write_byte(fd, cmd->data[i]);
++        } else {
++            /* read */
++            rc = i2c_smbus_read_byte(fd);
++            if (rc >= 0)
++                cmd->data[i] = rc;
++        }
++        if (rc < 0) {
++          rc = errno;
++          break;
++        }
++    }
++
++    return rc;
++}
++
++static int
++i2c_do_smb_io(int fd, i2c_op *cmd)
++{
++    int rc;
++    uint32_t data;
++
++    if (cmd->direction) {
++        /* write */
++        if (1 == cmd->byte_count) {
++            data = (long)cmd->data[0];
++            rc = i2c_smbus_write_byte_data(fd, cmd->register_address, data);
++        } else if (2 == cmd->byte_count) {
++            data = (long)(*(unsigned short *)cmd->data);
++            rc = i2c_smbus_write_word_data(fd, cmd->register_address, data);
++        } else {
++            // NOT IMPLEMENTED
++            return EINVAL;
++        }
++        if (rc < 0)
++            rc = errno;
++    } else {
++        /* read */
++        if (1 == cmd->byte_count) {
++            data = i2c_smbus_read_byte_data(fd, cmd->register_address);
++            if (data < 0)
++                rc = errno;
++            else
++                cmd->data[0] = (unsigned char)data;
++        } else if (2 == cmd->byte_count) {
++            data = i2c_smbus_read_word_data(fd, cmd->register_address);
++            if (data < 0)
++                rc = errno;
++            else
++                *(unsigned short *)cmd->data = (unsigned short)data;
++        } else {
++            size_t remaining = cmd->byte_count;
++            while (remaining != 0) {
++                unsigned char *buffer;
++                size_t count = remaining;
++                size_t offset = (cmd->byte_count - remaining);
++
++                if (count > 1) {
++                  count = 1;
++                }
++                buffer = cmd->data + offset;
++                data = i2c_smbus_read_byte_data(fd,
++                                                cmd->register_address + offset);
++                if (data < 0) {
++                    rc = errno;
++                    break;
++                }
++                *buffer = (unsigned char)data;
++                remaining -= count;
++            }
++        }
++    }
++
++    return rc;
++}
++
++#ifdef I2C_DEBUG
++static
++void i2c_dump(const YamlDevice *dev, unsigned int idx, i2c_op *cmd)
++{
++    printf("[%03d] %s %s %s %#02x reg:%04x/%d data: %02x:%02x len: %d\n",
++           idx, dev->bus,
++           cmd->direction ? "WRITE" : "READ",
++           cmd->device,
++           dev->address,
++           cmd->register_address,
++           dev->address_size,
++           cmd->data ? cmd->data[0] : 0,
++           cmd->data ? cmd->data[1] : 0,
++           cmd->byte_count);
++    printf("=================================\n\n");
++}
++#endif
++
+ int
+ i2c_execute(
+     YamlConfigHandle handle,
+@@ -166,10 +283,12 @@ i2c_execute(
+     char *dev_name;
+ 
+     if (dev == NULL || handle == NULL) {
++      printf("%s:%d\n", __func__, __LINE__);
+         return EINVAL;
+     }
+ 
+     if (cmds == NULL || cmds[0] == NULL) {
++      printf("%s:%d\n", __func__, __LINE__);
+         return EINVAL;
+     }
+ 
+@@ -194,6 +313,7 @@ i2c_execute(
+     dev = yaml_find_device(handle, subsyst, all_cmds[0]->device);
+ 
+     if (dev == NULL) {
++      printf("%s:%d\n", __func__, __LINE__);
+         return EINVAL;
+     }
+ 
+@@ -203,6 +323,8 @@ i2c_execute(
+         dev = yaml_find_device(handle, subsyst, all_cmds[idx]->device);
+         if (strcmp(dev->bus, bus_name) != 0) {
+             free(all_cmds);
++            printf("%s:%d dev %s bus:%s cmdbus=%s\n", __func__, __LINE__,
++                   dev->name, dev->bus, bus_name);
+             return EINVAL;
+         }
+     }
+@@ -211,6 +333,7 @@ i2c_execute(
+ 
+     if (bus == NULL) {
+         free(all_cmds);
++      printf("%s:%d\n", __func__, __LINE__);
+         return EINVAL;
+     }
+ 
+@@ -221,6 +344,7 @@ i2c_execute(
+     if (fd < 0) {
+         rc = errno;
+         free(all_cmds);
++      printf("%s:%d\n", __func__, __LINE__);
+         return rc;
+     }
+ 
+@@ -268,93 +392,29 @@ i2c_execute(
+                 continue;
+             }
+ 
+-            if (cmd->direction) {
+-                // write
+-                if (1 == cmd->byte_count) {
+-                    long data;
+-                    data = (long)cmd->data[0];
+-                    rc = i2c_smbus_write_byte_data(
+-                            fd,
+-                            cmd->register_address,
+-                            data);
+-                    if (rc < 0) {
+-                        rc = errno;
+-                        final_rc = rc;
+-                        continue;
+-                    }
+-                } else if (2 == cmd->byte_count) {
+-                    long data;
+-                    data = (long)(*(unsigned short *)cmd->data);
+-                    rc = i2c_smbus_write_word_data(
+-                            fd,
+-                            cmd->register_address,
+-                            data);
+-                    if (rc < 0) {
+-                        rc = errno;
+-                        final_rc = rc;
+-                        continue;
+-                    }
+-                } else {
+-                    // NOT IMPLEMENTED
+-                    rc = EINVAL;
+-                    final_rc = rc;
+-                    continue;
+-                }
+-            } else {
+-                // read
+-                if (1 == cmd->byte_count) {
+-                    long data;
+-                    data = i2c_smbus_read_byte_data(
+-                                fd,
+-                                cmd->register_address);
+-                    if (data < 0) {
+-                        rc = errno;
+-                        final_rc = rc;
+-                        continue;
+-                    } else {
+-                        cmd->data[0] = (unsigned char)data;
+-                    }
+-                } else if (2 == cmd->byte_count) {
+-                    long data;
+-                    data = i2c_smbus_read_word_data(
+-                                fd,
+-                                cmd->register_address);
+-                    if (data < 0) {
+-                        rc = errno;
+-                        final_rc = rc;
+-                        continue;
+-                    } else {
+-                        *(unsigned short *)cmd->data = (unsigned short)data;
+-                    }
+-                } else {
+-                    size_t remaining = cmd->byte_count;
+-                    while (remaining != 0) {
+-                        unsigned char *buffer;
+-                        long data;
+-                        size_t count = remaining;
+-                        size_t offset = (cmd->byte_count - remaining);
+-
+-                        if (count > 1) {
+-                            count = 1;
+-                        }
+-
+-                        buffer = cmd->data + offset;
+-
+-                        data = i2c_smbus_read_byte_data(
+-                                fd,
+-                                cmd->register_address + offset);
+-
+-                        if (data < 0) {
+-                            rc = errno;
+-                            final_rc = rc;
+-                            break;
+-                        }
+-
+-                        *buffer = (unsigned char)data;
+-
+-                        remaining -= count;
+-                    }
+-                }
++#ifdef I2C_DEBUG
++#ifndef I2C_DEBUG_RO
++            if (cmd->direction)
++                i2c_dump(dev, idx, cmd);
++#endif
++#endif
++            switch(dev->address_size) {
++            case SIZE_8_BITS:
++                rc = i2c_do_smb_io(fd, cmd);
++                break;
++            case SIZE_16_BITS:
++                rc = i2c_do_smb_extended_address_io(fd, cmd);
++                break;
++            }
++#ifdef I2C_DEBUG
++#ifndef I2C_DEBUG_WO
++            if (!cmd->direction)
++                i2c_dump(dev, idx, cmd);
++#endif
++#endif
++            if (rc < 0) {
++                final_rc = rc;
++                continue;
+             }
+         }
+ 
+@@ -367,3 +427,171 @@ i2c_execute(
+ 
+     return final_rc;
+ }
++
++static int
++i2c_do_op(YamlConfigHandle handle,
++          const char *subsyst,
++          i2c_op *op)
++{
++    const YamlDevice *device;
++    i2c_op *cmds[2];
++
++    device = yaml_find_device(handle, subsyst, op->device);
++    if (device == NULL) {
++        return EINVAL;
++    }
++    cmds[0] = op;
++    cmds[1] = NULL;
++
++    return i2c_execute(handle, subsyst, device, cmds);
++}
++
++static int
++i2c_reg_io(YamlConfigHandle handle,
++           const char *subsyst,
++           const bool direction,
++           const i2c_bit_op *reg_op,
++           uint32_t *val)
++{
++    int rc;
++    uint8_t byte;
++    uint16_t word;
++    uint32_t dword;
++    i2c_op op = {0};
++
++    if (direction == WRITE) {
++        uint32_t pre_data;
++
++        /* Apply the polarity, shift and mask */
++        dword = *val;
++        if (reg_op->negative_polarity)
++            dword = ~dword;
++        dword = (dword << reg_op->field_shift) & (uint32_t)reg_op->bit_mask;
++
++        /* If partial register write, must do read/modify/write */
++        if ((reg_op->bit_mask != 0xffu) &&
++            (reg_op->bit_mask != 0xffffu) &&
++            (reg_op->bit_mask != 0xffffffffu)) {
++            i2c_bit_op read_reg_op = *reg_op;
++
++            /* We want to read the entire register */
++            read_reg_op.bit_mask = 0xffu;
++            read_reg_op.field_shift = 0;
++            rc = i2c_reg_io(handle, subsyst, READ, &read_reg_op, &pre_data);
++            if (rc)
++                return rc;
++            pre_data &= ~(uint32_t)reg_op->bit_mask;
++            dword |= pre_data;
++        }
++    }
++
++    op.direction        = direction;
++    op.device           = reg_op->device;
++    op.register_address = reg_op->register_address;
++    op.byte_count       = reg_op->register_size;
++
++    switch(reg_op->register_size) {
++    case 1:
++        if (direction == WRITE)
++            byte = (unsigned char)dword;
++        op.data = (uint8_t *)&byte;
++        break;
++    case 2:
++        if (direction == WRITE)
++          word = htobe16((uint16_t)dword);
++        op.data = (uint8_t *)&word;
++        break;
++    case 4:
++        if (direction == WRITE)
++          dword = htobe32(dword);
++        op.data = (uint8_t *)&dword;
++        break;
++    default:
++        return EINVAL;
++    }
++    rc = i2c_do_op(handle, subsyst, &op);
++
++    if ((rc >= 0) && (direction == READ)) {
++
++        switch(reg_op->register_size) {
++        case 1:
++            dword = (uint32_t)byte;
++            break;
++        case 2:
++            /* byte-swapping already done... */
++            dword = (uint32_t)word;
++            break;
++        case 4:
++            dword = be32toh(dword);
++            break;
++        default:
++            return EINVAL;
++        }
++
++        /* Apply the polarity, shift and mask */
++        if (reg_op->negative_polarity)
++            dword = ~dword;
++        dword = (dword & (uint32_t)reg_op->bit_mask) >> reg_op->field_shift;
++        *val = dword;
++    }
++
++    return rc;
++}
++
++int
++i2c_reg_read(YamlConfigHandle handle,
++             const char *subsyst,
++             const i2c_bit_op *reg_op,
++             uint32_t *val)
++{
++    return i2c_reg_io(handle, subsyst, READ, reg_op, val);
++}
++
++int
++i2c_reg_write(YamlConfigHandle handle,
++              const char *subsyst,
++              const i2c_bit_op *reg_op,
++              const uint32_t val)
++{
++    uint32_t reg_data = val;
++
++    return i2c_reg_io(handle, subsyst, WRITE, reg_op, &reg_data);
++}
++
++int
++i2c_data_read(YamlConfigHandle handle,
++              const YamlDevice *device,
++              const char *subsyst,
++              const size_t offset,
++              const size_t len,
++              void *data)
++{
++    i2c_op op = {0};
++
++    op.direction = READ;
++    op.device = device->name;
++    op.register_address = offset;
++    op.byte_count = len;
++    op.data = data;
++
++    return i2c_do_op(handle, subsyst, &op);
++}
++
++int
++i2c_data_write(YamlConfigHandle handle,
++               const YamlDevice *device,
++               const char *subsyst,
++               const size_t offset,
++               const size_t len,
++               void *data)
++{
++    i2c_op op = {0};
++
++    op.direction = WRITE;
++    op.device = device->name;
++    op.register_address = offset;
++    op.byte_count = len;
++    op.data = data;
++
++    return i2c_do_op(handle, subsyst, &op);
++}

@@ -39,3 +39,492 @@ index 351a4de..aa7e409 100644
 +SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION "The ops-fand daemon monitors and controls the state of the fans.")
 +SET(CPACK_GENERATOR "DEB")
 +INCLUDE(CPack)
+diff --git a/include/fand-locl.h b/include/fand-locl.h
+index f87b9b2..6862905 100644
+--- a/include/fand-locl.h
++++ b/include/fand-locl.h
+@@ -127,6 +127,7 @@ struct locl_subsystem {
+     enum fanspeed fan_speed_override; /* as configured by user */
+     enum fanspeed speed;          /* result of fan_speed, fan_speed_override */
+     int multiplier;               /* from fans.yaml info */
++    int numerator;                /* from fans.yaml info */
+     struct shash subsystem_fans;  /* struct locl_fan */
+ };
+ 
+diff --git a/include/physfan.h b/include/physfan.h
+index 4302926..703e294 100644
+--- a/include/physfan.h
++++ b/include/physfan.h
+@@ -26,4 +26,6 @@
+ 
+ void fand_set_fanspeed(struct locl_subsystem *subsystem);
+ 
++void fand_set_fanleds(struct locl_subsystem *subsystem);
++
+ void fand_read_fan_status(struct locl_fan *fan);
+diff --git a/src/fand.c b/src/fand.c
+index 5d9328e..6cc6bd7 100644
+--- a/src/fand.c
++++ b/src/fand.c
+@@ -75,6 +75,11 @@ static struct ovsdb_idl *idl;
+ 
+ static unsigned int idl_seqno;
+ 
++/* HACK to detect changes in fan status */
++static unsigned int fand_seqno;
++
++static unsigned int fand_saved_seqno;
++
+ static unixctl_cb_func fand_unixctl_dump;
+ 
+ static bool cur_hw_set = false;
+@@ -192,6 +197,7 @@ add_subsystem(const struct ovsrec_subsystem *ovsrec_subsys)
+     }
+ 
+     result->multiplier = fan_info->fan_speed_multiplier;
++    result->numerator  = fan_info->fan_speed_numerator;
+ 
+     /* count the total fans in the subsystem */
+     total_fans = 0;
+@@ -444,15 +450,18 @@ fand_read_status(struct ovsdb_idl *idl)
+         if (strcmp(db_fan->status, status) != 0) {
+             ovsrec_fan_set_status(db_fan, status);
+             change = true;
++            fand_seqno++;
+         }
+         const char *speed = fan_speed_enum_to_string(fan->speed);
+         if (strcmp(db_fan->speed, speed) != 0) {
+             ovsrec_fan_set_speed(db_fan, speed);
+             change = true;
++            fand_seqno++;
+         }
+         if (strcmp(db_fan->direction, fan->direction) != 0) {
+             ovsrec_fan_set_direction(db_fan, fan->direction);
+             change = true;
++            fand_seqno++;
+         }
+         if (db_fan->rpm == NULL || db_fan->rpm[0] != fan->rpm) {
+             rpm[0] = fan->rpm;
+@@ -494,11 +503,12 @@ fand_reconfigure(struct ovsdb_idl *idl)
+ 
+     COVERAGE_INC(fand_reconfigure);
+ 
+-    if (new_idl_seqno == idl_seqno){
++    if ((new_idl_seqno == idl_seqno) && (fand_saved_seqno == fand_seqno)) {
+         return;
+     }
+ 
+     idl_seqno = new_idl_seqno;
++    fand_saved_seqno = fand_seqno;
+ 
+     fand_unmark_subsystems();
+ 
+@@ -536,6 +546,7 @@ fand_reconfigure(struct ovsdb_idl *idl)
+         }
+ 
+         fand_set_fanspeed(subsystem);
++        fand_set_fanleds(subsystem);
+ 
+         /* "mark" the subsystem, to indicate that it is still present */
+         subsystem->marked = true;
+diff --git a/src/physfan.c b/src/physfan.c
+index 3350670..400fbba 100644
+--- a/src/physfan.c
++++ b/src/physfan.c
+@@ -51,19 +51,97 @@ i2c_debug(
+     }
+ }
+ 
++static struct locl_fan *get_local_fan(struct locl_subsystem *subsystem,
++                                      const char *name)
++{
++    struct shash_node *node, *next;
++    struct locl_fan *fan = NULL;
++    char fullname[128];
++
++    snprintf(fullname, sizeof(fullname), "%s-%s",
++             subsystem->name, name);
++    
++    SHASH_FOR_EACH_SAFE(node, next, &subsystem->subsystem_fans) {
++      fan = (struct locl_fan *)node->data;
++      if (strcmp(fan->name, fullname) == 0)
++          break;
++    }
++
++    return fan;
++}
++
++static int fand_set_led(struct locl_subsystem *subsystem,
++                        const YamlFanInfo *fan_info,
++                        i2c_bit_op *led, const enum fanstatus status)
++{
++    unsigned char ledval = 0;
++
++    switch(status) {
++    case FAND_STATUS_UNINITIALIZED:
++        ledval = fan_info->fan_led_values.off;
++        break;
++    case FAND_STATUS_OK:
++        ledval = fan_info->fan_led_values.good;
++        break;
++    case FAND_STATUS_FAULT:
++    default:
++        ledval = fan_info->fan_led_values.fault;
++        break;
++    }
++    return i2c_reg_write(yaml_handle, subsystem->name, led, ledval);
++ }
++
++void fand_set_fanleds(struct locl_subsystem *subsystem)
++{
++    const YamlFanInfo *fan_info;
++    enum fanstatus aggr_status = FAND_STATUS_UNINITIALIZED;
++    int rc = 0;
++
++    fan_info = yaml_get_fan_info(yaml_handle, subsystem->name);
++    if (fan_info == NULL) {
++        VLOG_DBG("subsystem %s has no fan info", subsystem->name);
++        return;
++    }
++
++    for (size_t idx = 0; idx < fan_info->number_fan_frus; idx++) {
++        enum fanstatus status = FAND_STATUS_UNINITIALIZED;
++        const YamlFanFru *fru = yaml_get_fan_fru(yaml_handle,
++                                                 subsystem->name, idx);
++        for (size_t fan_idx = 0; fru->fans[fan_idx]; fan_idx++) {
++            const YamlFan *fan = fru->fans[fan_idx];
++            struct locl_fan *lfan = get_local_fan(subsystem, fan->name);
++            if (lfan && (lfan->status > status)) {
++                status = lfan->status;
++            }
++        }
++        if (status > aggr_status)
++            aggr_status = status;
++
++        if (fru->fan_leds == NULL)
++            continue;
++
++        rc = fand_set_led(subsystem, fan_info, fru->fan_leds, status);
++        if (rc) {
++            VLOG_DBG("Unable to set subsystem %s fan fru %d status LED",
++                     subsystem->name, fru->number);
++        }
++    }
++
++    if (fan_info->fan_led) {
++        rc = fand_set_led(subsystem, fan_info,
++                          fan_info->fan_led, aggr_status);
++        if (rc) {
++            VLOG_DBG("Unable to set subsystem %s fan status LED",
++                     subsystem->name);
++        }
++    }
++}
++
+ void
+ fand_set_fanspeed(struct locl_subsystem *subsystem)
+ {
+     unsigned char hw_speed_val;
+-    i2c_bit_op *reg_op;
+-    i2c_op op;
+-    i2c_op *cmds[2];
+-    unsigned char byte;
+-    unsigned short word;
+-    unsigned long dword;
+-    int rc;
+     const YamlFanInfo *fan_info = NULL;
+-    const YamlDevice *device = NULL;
+     enum fanspeed speed = subsystem->fan_speed_override;
+ 
+     /* use override if it exists, unless the sensors think the speed should be
+@@ -87,13 +165,6 @@ fand_set_fanspeed(struct locl_subsystem *subsystem)
+         return;
+     }
+ 
+-    reg_op = fan_info->fan_speed_control;
+-
+-    if (reg_op == NULL) {
+-        VLOG_DBG("subsystem %s has no fan speed control", subsystem->name);
+-        return;
+-    }
+-
+     /* translate the speed */
+     switch (speed) {
+         case FAND_SPEED_NORMAL:
+@@ -129,138 +200,54 @@ fand_set_fanspeed(struct locl_subsystem *subsystem)
+             break;
+     }
+ 
+-    /* get the device */
+-    device = yaml_find_device(yaml_handle, subsystem->name, reg_op->device);
+-
+-    if (device == NULL) {
+-        VLOG_WARN("subsystem %s: unable to find fan speed control device %s",
+-                subsystem->name,
+-                reg_op->device);
+-        return;
+-    }
+-
+-    VLOG_DBG("subsystem %s: executing read operation to device %s",
+-        subsystem->name,
+-        reg_op->device);
+-    /* we're going to do a read/modify/write: read the data */
+-    op.direction = READ;
+-    op.device = reg_op->device;
+-    op.register_address = reg_op->register_address;
+-    op.byte_count = reg_op->register_size;
+-    switch (reg_op->register_size) {
+-        case 1:
+-            op.data = (unsigned char *)&byte;
+-            break;
+-        case 2:
+-            op.data = (unsigned char *)&word;
+-            break;
+-        case 4:
+-            op.data = (unsigned char *)&dword;
+-            break;
+-        default:
+-            VLOG_WARN("subsystem %s: invalid fan speed control register size (%d)",
+-                subsystem->name,
+-                reg_op->register_size);
+-            return;
+-    }
+-    op.set_register = false;
+-    op.negative_polarity = false;
+-    cmds[0] = &op;
+-    cmds[1] = NULL;
+-
+-    i2c_debug(subsystem->name, device, cmds);
+-    rc = i2c_execute(yaml_handle, subsystem->name, device, cmds);
+-
+-    if (rc != 0) {
+-        VLOG_WARN("subsystem %s: unable to read fan speed control register (%d)",
+-            subsystem->name,
+-            rc);
+-        return;
+-    }
+-
+-    VLOG_DBG("subsystem %s: executing write operation to device %s",
+-        subsystem->name,
+-        reg_op->device);
+-    /* now we write the data */
+-    op.direction = WRITE;
+-    switch (reg_op->register_size) {
+-        case 1:
+-            byte &= ~reg_op->bit_mask;
+-            byte |= hw_speed_val;
+-            break;
+-        case 2:
+-            word &= ~reg_op->bit_mask;
+-            word |= hw_speed_val;
+-            break;
+-        case 4:
+-            dword &= ~reg_op->bit_mask;
+-            dword |= hw_speed_val;
+-            break;
+-        default:
+-            VLOG_WARN("subsystem %s: invalid fan speed control register size (%d)",
+-                subsystem->name,
+-                reg_op->register_size);
++    /* Fan speed may have one control per subsystem, per fru, or per fan. */
++    if (fan_info->fan_speed_control_type == SINGLE) {
++        if (fan_info->fan_speed_control == NULL) {
++            VLOG_DBG("subsystem %s has no fan speed control", subsystem->name);
+             return;
+-    }
+-
+-    i2c_debug(subsystem->name, device, cmds);
+-    rc = i2c_execute(yaml_handle, subsystem->name, device, cmds);
+-
+-    if (rc != 0) {
+-        VLOG_WARN("subsystem %s: unable to set fan speed control register (%d)",
+-            subsystem->name,
+-            rc);
+-        return;
++        }
++        i2c_reg_write(yaml_handle, subsystem->name,
++                      fan_info->fan_speed_control, hw_speed_val);
++        VLOG_DBG("FAN speed set to %#x", hw_speed_val);
++    } else {
++        for (size_t idx = 0; idx < fan_info->number_fan_frus; idx++) {
++            const YamlFanFru *fru = yaml_get_fan_fru(yaml_handle,
++                                                     subsystem->name, idx);
++            if (fan_info->fan_speed_control_type == PER_FRU) {
++                if (fru->fan_speed_control == NULL) {
++                  VLOG_DBG("fan fru %d has no fan speed control", fru->number);
++                  continue;
++                }
++                i2c_reg_write(yaml_handle, subsystem->name,
++                              fru->fan_speed_control, hw_speed_val);
++            } else if (fan_info->fan_speed_control_type == PER_FAN) {
++               for (size_t fan_idx = 0; fru->fans[fan_idx]; fan_idx++) {
++                    const YamlFan *fan = fru->fans[fan_idx];
++                    if (fan->fan_speed_control == NULL) {
++                        VLOG_DBG("fan %s has no fan speed control", fan->name);
++                        continue;
++                    }
++                    i2c_reg_write(yaml_handle, subsystem->name,
++                                  fan->fan_speed_control, hw_speed_val);
++               }
++            } else {
++                VLOG_WARN("subsystem %s: invalid fan speed control type (%d)",
++                          subsystem->name,
++                          fan_info->fan_speed_control_type);
++                return;
++            }
++        }
+     }
+ }
+ 
+ static int
+ fand_read_rpm(const char *subsystem_name, const YamlFan *fan)
+ {
+-    i2c_bit_op *rpm_op;
+-    i2c_op op;
+-    i2c_op *cmds[2];
+-    unsigned char byte = 0;
+-    unsigned short word = 0;
+-    unsigned long dword = 0;
+-    const YamlDevice *device;
++    uint32_t dword = 0;
++    uint32_t rpm;
+     int rc;
+ 
+-    cmds[0] = &op;
+-    cmds[1] = NULL;
+-
+-    rpm_op = fan->fan_speed;
+-
+-    op.direction = READ;
+-    op.device = rpm_op->device;
+-    op.byte_count = rpm_op->register_size;
+-    op.set_register = false;
+-    op.register_address = rpm_op->register_address;
+-    switch (op.byte_count) {
+-        case 1:
+-            op.data = &byte;
+-            break;
+-        case 2:
+-            op.data = (unsigned char *)&word;
+-            break;
+-        case 4:
+-            op.data = (unsigned char *)&dword;
+-            break;
+-        default:
+-            VLOG_WARN("Invalid register size %d accessing %s-%s",
+-                op.byte_count,
+-                subsystem_name,
+-                fan->name);
+-            op.byte_count = 1;
+-            op.data = &byte;
+-            break;
+-    }
+-    op.negative_polarity = false;
+-
+-    device = yaml_find_device(yaml_handle, subsystem_name, rpm_op->device);
+-
+-    i2c_debug(subsystem_name, device, cmds);
+-    rc = i2c_execute(yaml_handle, subsystem_name, device, cmds);
++    rc = i2c_reg_read(yaml_handle, subsystem_name, fan->fan_speed, &dword);
+ 
+     if (rc != 0) {
+         VLOG_WARN("subsystem %s: unable to read fan %s rpm (%d)",
+@@ -270,21 +257,26 @@ fand_read_rpm(const char *subsystem_name, const YamlFan *fan)
+         return(0);
+     }
+ 
+-    switch (op.byte_count) {
+-        case 1:
+-        default:
+-            VLOG_DBG("speed data is %02x", byte);
+-            return (byte & (rpm_op->bit_mask));
+-            break;
+-        case 2:
+-            VLOG_DBG("speed data is %04x", word);
+-            return (word & (rpm_op->bit_mask));
+-            break;
+-        case 4:
+-            VLOG_DBG("speed data is %08lx", dword);
+-            return (dword & (rpm_op->bit_mask));
+-            break;
++    /* Least significant byte */
++    rpm = dword;
++
++    if (fan->fan_speed_msb) {
++        rc = i2c_reg_read(yaml_handle, subsystem_name,
++                          fan->fan_speed_msb, &dword);
++
++        if (rc != 0) {
++            VLOG_WARN("subsystem %s: unable to read fan %s rpm MSB (%d)",
++                      subsystem_name,
++                      fan->name,
++                      rc);
++            return(0);
++        }
++
++        /* Most signifucant byte */
++        rpm += dword << 8;
+     }
++
++    return (int)rpm;
+ }
+ 
+ static enum fanstatus
+@@ -517,12 +509,55 @@ fand_read_direction(const char *subsystem_name, const YamlFan *fan)
+     return(fan_direction_enum_to_string(fan_direction));
+ }
+ 
++static int
++fand_read_present(const char *subsystem_name, const YamlFanFru *fru)
++{
++    int rc;
++    uint32_t present;
++
++    if (!fru->fan_present)
++        present = 1;
++    else {
++        rc = i2c_reg_read(yaml_handle, subsystem_name,
++                          fru->fan_present, &present);
++        if (rc < 0) {
++            VLOG_WARN("subsystem %s: unable to read FRU %d present (%d)",
++                      subsystem_name,
++                      fru->number,
++                      rc);
++            present = 0;
++        }
++    }
++    return (present != 0);   
++}
++
+ void
+ fand_read_fan_status(struct locl_fan *fan)
+ {
++    const YamlFanFru *fan_fru;
++
++    fan->direction = fand_read_direction(fan->subsystem->name, fan->yaml_fan);
++
++    fan_fru = fan_fru_get(fan->subsystem->name, fan->yaml_fan);
++    if (!fand_read_present(fan->subsystem->name, fan_fru)) {
++        fan->status = FAND_STATUS_FAULT;
++        fan->rpm = 0;
++        return;
++    }
++
+     fan->rpm = fand_read_rpm(fan->subsystem->name, fan->yaml_fan);
+-    fan->rpm *= fan->subsystem->multiplier;
++    if (fan->subsystem->multiplier)
++        fan->rpm *= fan->subsystem->multiplier;
++    else if (fan->subsystem->numerator) {
++        if (fan->rpm)
++          fan->rpm = fan->subsystem->numerator / fan->rpm;
++        else
++          fan->rpm = 0;
++    }
++    else {
++        VLOG_WARN("subsystem %s: No valid fan speed calculation found.",
++                  fan->subsystem->name);
++    }
+ 
+     fan->status = fand_read_status(fan->subsystem->name, fan->yaml_fan);
+-    fan->direction = fand_read_direction(fan->subsystem->name, fan->yaml_fan);
+ }

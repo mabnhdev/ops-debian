@@ -1,0 +1,289 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 6bef248..f29d034 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -43,7 +43,7 @@ pkg_check_modules(OVSCOMMON REQUIRED libovscommon)
+ pkg_check_modules(OPENNSL REQUIRED opennsl)
+ 
+ # Define compile flags
+-set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OPENNSL_CFLAGS} -DINCLUDE_L3 -std=gnu99 -Wall -Werror")
++set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OPENNSL_CFLAGS_OTHER} -DINCLUDE_L3 -std=gnu99 -Wall -Werror")
+ 
+ include_directories(${CMAKE_SOURCE_DIR}/${INCL_DIR}
+ 	            ${OVSCOMMON_INCLUDE_DIRS}
+@@ -52,9 +52,22 @@ include_directories(${CMAKE_SOURCE_DIR}/${INCL_DIR}
+ # Create our library
+ add_library (ovs_bcm_plugin SHARED ${SOURCES})
+ 
+-target_link_libraries (ovs_bcm_plugin ${OVSCOMMON_LIBRARIES} ${OPENNSL_LIBRARIES})
++target_link_libraries (ovs_bcm_plugin ${OVSCOMMON_LDFLAGS} ${OPENNSL_LDFLAGS})
+ 
+ # Installation
+ install(TARGETS ovs_bcm_plugin
+         LIBRARY DESTINATION lib/openvswitch/plugins
+        )
++
++###
++### Packaging
++###
++SET(CPACK_DEBIAN_PACKAGE_NAME "ovs_bcm_plugin")
++SET(CPACK_DEBIAN_PACKAGE_VERSION "0.1.0")
++SET(CPACK_DEBIAN_PACKAGE_ARCH "amd64")
++SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libc6, openvswitch-common")
++SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "OpsDev <ops-dev@lists.openswitch.net>")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION_SUMMARY "OpenSwitch switch plugin.")
++SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION "OpenSwitch switch plugin for OpenNsl.")
++SET(CPACK_GENERATOR "DEB")
++INCLUDE(CPack)
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 6bef248..b933884 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -45,7 +45,7 @@ pkg_check_modules(OPENNSL REQUIRED opennsl)
+ # Define compile flags
+ set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OPENNSL_CFLAGS} -DINCLUDE_L3 -std=gnu99 -Wall -Werror")
+ 
+-include_directories(${CMAKE_SOURCE_DIR}/${INCL_DIR}
++include_directories(${CMAKE_CURRENT_SOURCE_DIR}/${INCL_DIR}
+ 	            ${OVSCOMMON_INCLUDE_DIRS}
+ 	            ${OPENNSL_INCLUDE_DIRS})
+ 
+diff --git a/include/platform-defines.h b/include/platform-defines.h
+index aebbba6..c6025d0 100644
+--- a/include/platform-defines.h
++++ b/include/platform-defines.h
+@@ -28,8 +28,8 @@
+ 
+ /* OPS_TODO: these are no longer available in OpenNSL.
+  * Maybe add build-time variable to customize these, if neeeded. */
+-#define MAX_HW_PORTS         128
+-#define MAX_PORTS(unit)      128
++#define MAX_HW_PORTS         134 /* Tomahawk has 134 ports including CPU */
++#define MAX_PORTS(unit)      134 /* Tomahawk has 134 ports including CPU */
+ #define CPU_PORT(unit)       0
+ 
+ #define VALID_HW_UNIT(hw_unit)      (((hw_unit) >= 0) && ((hw_unit) < MAX_SWITCH_UNITS))
+diff --git a/src/netdev-bcmsdk.c b/src/netdev-bcmsdk.c
+index 2f59ea3..09d2717 100644
+--- a/src/netdev-bcmsdk.c
++++ b/src/netdev-bcmsdk.c
+@@ -1,5 +1,5 @@
+ /*
+- * Copyright (C) 2015 Hewlett-Packard Development Company, L.P.
++ * Copyright (C) 2015. 2016 Hewlett-Packard Development Company, L.P.
+  * All Rights Reserved.
+  *
+  *   Licensed under the Apache License, Version 2.0 (the "License"); you may
+@@ -253,13 +253,14 @@ netdev_bcmsdk_set_config(struct netdev *netdev_, const struct smap *args)
+     struct netdev_bcmsdk *parent_netdev = NULL;
+     int rc = 0;
+ 
+-    VLOG_INFO("netdev set_config for interface %s\n", netdev->up.name);
++    VLOG_DBG("netdev set_config for interface %s\n", netdev->up.name);
+ 
+     ovs_mutex_lock(&netdev->mutex);
+     const char *parent_intf_name = smap_get(args, "parent_intf_name");
+-    const char *vlanid = smap_get(args, "vlan_id");
++    const char *vlanid = smap_get(args, "vlan");
+ 
+-    VLOG_DBG("netdev set_config get info from  parent interface %s", parent_intf_name);
++    VLOG_DBG("netdev set_config gets info for parent interface %s, and vlan = %s",
++              parent_intf_name, vlanid);
+     if (parent_intf_name) {
+         parent = netdev_from_name(parent_intf_name);
+         if (parent != NULL) {
+@@ -685,13 +686,13 @@ netdev_bcmsdk_set_hw_intf_config(struct netdev *netdev_, const struct smap *args
+ 
+ static int
+ netdev_bcmsdk_set_etheraddr(struct netdev *netdev,
+-                           const uint8_t mac[ETH_ADDR_LEN])
++                            const struct eth_addr mac)
+ {
+     struct netdev_bcmsdk *dev = netdev_bcmsdk_cast(netdev);
+ 
+     ovs_mutex_lock(&dev->mutex);
+-    if (!eth_addr_equals(dev->hwaddr, mac)) {
+-        memcpy(dev->hwaddr, mac, ETH_ADDR_LEN);
++    if (memcmp(dev->hwaddr, mac.ea, ETH_ADDR_LEN)) {
++        memcpy(dev->hwaddr, mac.ea, ETH_ADDR_LEN);
+         netdev_change_seq_changed(netdev);
+     }
+     ovs_mutex_unlock(&dev->mutex);
+@@ -701,12 +702,12 @@ netdev_bcmsdk_set_etheraddr(struct netdev *netdev,
+ 
+ static int
+ netdev_bcmsdk_get_etheraddr(const struct netdev *netdev,
+-                           uint8_t mac[ETH_ADDR_LEN])
++                            struct eth_addr *mac)
+ {
+     struct netdev_bcmsdk *dev = netdev_bcmsdk_cast(netdev);
+ 
+     ovs_mutex_lock(&dev->mutex);
+-    memcpy(mac, dev->hwaddr, ETH_ADDR_LEN);
++    memcpy(mac->ea, dev->hwaddr, ETH_ADDR_LEN);
+     ovs_mutex_unlock(&dev->mutex);
+ 
+     return 0;
+diff --git a/src/ofproto-bcm-provider.c b/src/ofproto-bcm-provider.c
+index 7ac9410..70d950c 100644
+--- a/src/ofproto-bcm-provider.c
++++ b/src/ofproto-bcm-provider.c
+@@ -1,6 +1,6 @@
+ /*
+  * Copyright (c) 2009, 2010, 2011, 2012, 2013, 2014 Nicira, Inc.
+- * Copyright (C) 2015 Hewlett-Packard Development Company, L.P.
++ * Copyright (C) 2015, 2016 Hewlett-Packard Development Company, L.P.
+  *
+  * Licensed under the Apache License, Version 2.0 (the "License");
+  * you may not use this file except in compliance with the License.
+@@ -274,6 +274,12 @@ query_tables(struct ofproto *ofproto,
+     return;
+ }
+ 
++static void
++set_tables_version(struct ofproto *ofproto, cls_version_t version)
++{
++    return;
++}
++
+ static struct ofport *
+ port_alloc(void)
+ {
+@@ -1724,11 +1730,11 @@ rule_construct(struct rule *rule_ OVS_UNUSED)
+     return 0;
+ }
+ 
+-static enum ofperr
+-rule_insert(struct rule *rule_ OVS_UNUSED)
+-    OVS_REQUIRES(ofproto_mutex)
++static void rule_insert(struct rule *rule, struct rule *old_rule,
++                    bool forward_stats)
++OVS_REQUIRES(ofproto_mutex)
+ {
+-    return 0;
++    return;
+ }
+ 
+ static void
+@@ -1753,18 +1759,11 @@ rule_get_stats(struct rule *rule_ OVS_UNUSED, uint64_t *packets OVS_UNUSED,
+ 
+ static enum ofperr
+ rule_execute(struct rule *rule OVS_UNUSED, const struct flow *flow OVS_UNUSED,
+-             struct ofpbuf *packet OVS_UNUSED)
++             struct dp_packet *packet OVS_UNUSED)
+ {
+     return 0;
+ }
+ 
+-static void
+-rule_modify_actions(struct rule *rule_ OVS_UNUSED, bool reset_counters OVS_UNUSED)
+-    OVS_REQUIRES(ofproto_mutex)
+-{
+-    return;
+-}
+-
+ static struct bcmsdk_provider_group
+               *bcmsdk_provider_group_cast(const struct ofgroup *group)
+ {
+@@ -1825,7 +1824,7 @@ set_frag_handling(struct ofproto *ofproto_ OVS_UNUSED,
+ }
+ 
+ static enum ofperr
+-packet_out(struct ofproto *ofproto_ OVS_UNUSED, struct ofpbuf *packet OVS_UNUSED,
++packet_out(struct ofproto *ofproto_ OVS_UNUSED, struct dp_packet *packet OVS_UNUSED,
+            const struct flow *flow OVS_UNUSED,
+            const struct ofpact *ofpacts OVS_UNUSED, size_t ofpacts_len OVS_UNUSED)
+ {
+@@ -1964,6 +1963,7 @@ const struct ofproto_class ofproto_bcm_provider_class = {
+     NULL,                       /* may implement type_get_memory_usage */
+     NULL,                       /* may implement flush */
+     query_tables,
++    set_tables_version,
+     port_alloc,
+     port_construct,
+     port_destruct,
+@@ -1990,8 +1990,6 @@ const struct ofproto_class ofproto_bcm_provider_class = {
+     rule_dealloc,
+     rule_get_stats,
+     rule_execute,
+-    NULL,                       /* rule_premodify_actions */
+-    rule_modify_actions,
+     set_frag_handling,
+     packet_out,
+     NULL,                       /* may implement set_netflow */
+@@ -2001,6 +1999,13 @@ const struct ofproto_class ofproto_bcm_provider_class = {
+     NULL,                       /* may implement set_cfm */
+     cfm_status_changed,
+     NULL,                       /* may implement get_cfm_status */
++    NULL,                       /* may implement set_lldp */
++    NULL,                       /* may implement get_lldp_status */
++    NULL,                       /* may implement set_aa */
++    NULL,                       /* may implement aa_mapping_set */
++    NULL,                       /* may implement aa_mapping_unset */
++    NULL,                       /* may implement aa_vlan_get_queued */
++    NULL,                       /* may implement aa_vlan_get_queue_size */
+     NULL,                       /* may implement set_bfd */
+     bfd_status_changed,
+     NULL,                       /* may implement get_bfd_status */
+diff --git a/src/ops-routing.c b/src/ops-routing.c
+index 19d25f9..1116f7e 100644
+--- a/src/ops-routing.c
++++ b/src/ops-routing.c
+@@ -1,4 +1,4 @@
+-/* Copyright (C) 2015 Hewlett Packard Enterprise Development LP
++/* Copyright (C) 2015. 2016 Hewlett Packard Enterprise Development LP
+  * All Rights Reserved.
+ 
+  * Licensed under the Apache License, Version 2.0 (the "License"); you may
+@@ -1671,13 +1671,13 @@ ops_l3_mac_move_add(int   unit,
+ 
+    memset(egress_id_key, 0, sizeof(egress_id_key));
+    snprintf(egress_id_key, 24, "%d:" ETH_ADDR_FMT, l2addr->vid,
+-                               ETH_ADDR_ARGS(l2addr->mac));
++                               ETH_ADDR_BYTES_ARGS(l2addr->mac));
+ 
+    egress_id_node = ops_egress_id_lookup(egress_id_key);
+    if (egress_id_node == NULL) {
+        VLOG_INFO("Egress object id NOT found in process cache, possibly "
+                  "deleted: unit=%d, key=%s, vlan=%d, mac=" ETH_ADDR_FMT,
+-                 unit, egress_id_key, l2addr->vid, ETH_ADDR_ARGS(l2addr->mac));
++                 unit, egress_id_key, l2addr->vid, ETH_ADDR_BYTES_ARGS(l2addr->mac));
+ 
+        /* Unexpected condition. This shouldn't happen. */
+        return;
+@@ -1692,7 +1692,7 @@ ops_l3_mac_move_add(int   unit,
+        VLOG_ERR("Egress object not found in ASIC for given vlan/mac. rc=%s "
+                  "unit=%d, key=%s, vlan=%d, mac=" ETH_ADDR_FMT ", egr-id: %d",
+                  opennsl_errmsg(rc), unit, egress_id_key, l2addr->vid,
+-                 ETH_ADDR_ARGS(l2addr->mac), egress_id_node->egress_object_id);
++                 ETH_ADDR_BYTES_ARGS(l2addr->mac), egress_id_node->egress_object_id);
+ 
+        goto done;
+    }
+@@ -1703,7 +1703,7 @@ ops_l3_mac_move_add(int   unit,
+ 
+    VLOG_DBG("Input: unit=%d, flags=0x%x, port=%d, vlan=%d, mac=" ETH_ADDR_FMT
+              " egr-id=%d, intf=%d", unit, egress_object.flags, egress_object.port,
+-             egress_object.vlan, ETH_ADDR_ARGS(egress_object.mac_addr),
++             egress_object.vlan, ETH_ADDR_BYTES_ARGS(egress_object.mac_addr),
+              egress_id_node->egress_object_id, egress_object.intf);
+ 
+    rc = opennsl_l3_egress_create(unit, egress_object.flags, &egress_object,
+@@ -1737,7 +1737,7 @@ ops_l3_mac_move_delete(int   unit,
+ 
+    memset(egress_id_key, 0, sizeof(egress_id_key));
+    snprintf(egress_id_key, 24, "%d:" ETH_ADDR_FMT, l2addr->vid,
+-                               ETH_ADDR_ARGS(l2addr->mac));
++                               ETH_ADDR_BYTES_ARGS(l2addr->mac));
+ 
+    /* Create an egress object with old/deleted port and save in hashmap */
+ 
+@@ -1752,7 +1752,7 @@ ops_l3_mac_move_delete(int   unit,
+    if (OPENNSL_FAILURE(rc)) {
+        VLOG_ERR("Failed retrieving egress object id: rc=%s, unit=%d, vlan=%d, "
+                 "mac=" ETH_ADDR_FMT, opennsl_errmsg(rc), unit, l2addr->vid,
+-                ETH_ADDR_ARGS(l2addr->mac));
++                ETH_ADDR_BYTES_ARGS(l2addr->mac));
+ 
+        return;
+    }

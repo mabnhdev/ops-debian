@@ -39,3 +39,138 @@ index 6d8e105..22ffee3 100644
 +SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Detects and reports power supply status.")
 +SET(CPACK_GENERATOR "DEB")
 +INCLUDE(CPack)
+diff --git a/include/powerd.h b/include/powerd.h
+index 8c68782..e37502c 100644
+--- a/include/powerd.h
++++ b/include/powerd.h
+@@ -151,6 +151,7 @@ struct locl_subsystem {
+     char *name;             /*!< name identifier of the subsystem */
+     bool marked;            /*!< flag for calculating "in use" status */
+     bool valid;             /*!< flag to know if this is a valid subsys */
++    enum psustatus status;  /*!< current power supply status */
+     struct locl_subsystem *parent_subsystem; /*!< pointer to parent (if any) */
+     struct shash subsystem_psus;  /*!< power supplies in this subsystem */
+ };
+diff --git a/src/powerd.c b/src/powerd.c
+index d6d8710..4f4e886 100644
+--- a/src/powerd.c
++++ b/src/powerd.c
+@@ -60,6 +60,11 @@ static struct ovsdb_idl *idl;
+ 
+ static unsigned int idl_seqno;
+ 
++/* HACK to detect changes in fan status */
++static unsigned int powerd_seqno;
++
++static unsigned int powerd_saved_seqno;
++
+ static unixctl_cb_func powerd_unixctl_dump;
+ 
+ static bool cur_hw_set = false;
+@@ -209,6 +214,68 @@ powerd_read_psu(struct locl_psu *psu)
+     }
+ }
+ 
++static void
++powerd_set_psuleds(struct locl_subsystem *subsystem)
++{
++    const YamlPsuInfo *psu_info;
++    struct locl_psu *psu;
++    struct shash_node *psu_node;
++    enum psustatus status = PSU_STATUS_OK;
++    unsigned char ledval ;
++    int rc = 0;
++
++    psu_info = yaml_get_psu_info(yaml_handle, subsystem->name);
++    if (psu_info == NULL) {
++        VLOG_DBG("subsystem %s has no psu info", subsystem->name);
++        return;
++    }
++    if (psu_info->psu_led == NULL)
++        return;
++
++    SHASH_FOR_EACH(psu_node, &subsystem->subsystem_psus) {
++        psu = (struct locl_psu *)psu_node->data;
++        switch(psu->status) {
++        case PSU_STATUS_OK:
++        case PSU_STATUS_UNKNOWN:
++        case PSU_STATUS_OVERRIDE_NONE:
++        case PSU_STATUS_FAULT_ABSENT:
++            /* Ignore absent PSUs and OK status */
++            break;
++        case PSU_STATUS_FAULT_INPUT:
++        case PSU_STATUS_FAULT_OUTPUT:
++            status = psu->status;
++            break;
++        }
++    }
++
++    if (subsystem->status != status) {
++        subsystem->status = status;
++        ledval = psu_info->psu_led_values.off;
++        switch(status) {
++        case PSU_STATUS_OK:
++            ledval = psu_info->psu_led_values.good;
++            break;
++        case PSU_STATUS_FAULT_INPUT:
++        case PSU_STATUS_FAULT_OUTPUT:
++        case PSU_STATUS_FAULT_ABSENT:
++            ledval = psu_info->psu_led_values.fault;
++            break;
++        case PSU_STATUS_UNKNOWN:
++        case PSU_STATUS_OVERRIDE_NONE:
++            ledval = psu_info->psu_led_values.off;
++            break;
++        }
++
++        rc = i2c_reg_write(yaml_handle, subsystem->name,
++                           psu_info->psu_led, ledval);
++        if (rc) {
++            VLOG_DBG("Unable to set subsystem %s psu status LED",
++                     subsystem->name);
++        }
++    }
++}
++
++
+ /************************************************************************//**
+  * Function that creates a new locl_subsystem structure when a new
+  *    subsystem is found in ovsdb, reads the psu status for each power
+@@ -254,6 +321,7 @@ add_subsystem(const struct ovsrec_subsystem *ovsrec_subsys)
+     result->name = strdup(ovsrec_subsys->name);
+     result->marked = false;
+     result->valid = false;
++    result->status = PSU_STATUS_UNKNOWN;
+     result->parent_subsystem = NULL;  /* OPS_TODO: find parent subsystem */
+     shash_init(&result->subsystem_psus);
+ 
+@@ -500,6 +568,7 @@ powerd_run__(void)
+     /* if a change was made, execute the transaction */
+     if (change == true) {
+         ovsdb_idl_txn_commit_block(txn);
++        powerd_seqno++;
+     }
+     ovsdb_idl_txn_destroy(txn);
+ }
+@@ -588,11 +657,12 @@ powerd_reconfigure(struct ovsdb_idl *idl)
+ 
+     COVERAGE_INC(powerd_reconfigure);
+ 
+-    if (new_idl_seqno == idl_seqno){
++    if ((new_idl_seqno == idl_seqno) && (powerd_seqno == powerd_saved_seqno)){
+         return;
+     }
+ 
+     idl_seqno = new_idl_seqno;
++    powerd_saved_seqno = powerd_seqno;
+ 
+     /* handle any added or deleted subsystems */
+     powerd_unmark_subsystems();
+@@ -604,6 +674,7 @@ powerd_reconfigure(struct ovsdb_idl *idl)
+         if (subsystem == NULL) {
+             continue;
+         }
++        powerd_set_psuleds(subsystem);
+         subsystem->marked = true;
+     }
+ 

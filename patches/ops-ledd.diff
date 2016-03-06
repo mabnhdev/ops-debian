@@ -39,3 +39,109 @@ index dad57c2..83e6f45 100644
 +SET(CPACK_DEBIAN_PACKAGE_DESCRIPTION "Reports and controls the state of user-managed LEDs.")
 +SET(CPACK_GENERATOR "DEB")
 +INCLUDE(CPack)
+diff --git a/include/ledd.h b/include/ledd.h
+index d758445..3a073de 100644
+--- a/include/ledd.h
++++ b/include/ledd.h
+@@ -113,6 +113,7 @@
+ #define NAME_IN_DAEMON_TABLE "ops-ledd" /*!< Name identifier for this daemon in the OVSDB daemon table */
+ 
+ #define LEDD_LED_TYPE_LOC       "loc" /*!< Name identifier for LED type loc */
++#define LEDD_LED_TYPE_SYS       "system" /*!< Name identifier for LED type system */
+ 
+ VLOG_DEFINE_THIS_MODULE(ops_ledd);
+ COVERAGE_DEFINE(ledd_reconfigure);
+@@ -124,7 +125,8 @@ COVERAGE_DEFINE(ledd_reconfigure);
+  * are defined in this header file.
+  ***************************************************************************/
+ const char *led_type_strings[] = {
+-    LEDD_LED_TYPE_LOC     /*!< LED type "loc" */
++    LEDD_LED_TYPE_LOC, /*!< LED type "loc" */
++    LEDD_LED_TYPE_SYS  /*!< LED type "system" */
+ };
+ 
+ /************************************************************************//**
+diff --git a/src/ledd.c b/src/ledd.c
+index 3ef1a94..972fb49 100644
+--- a/src/ledd.c
++++ b/src/ledd.c
+@@ -81,8 +81,10 @@ static bool cur_hw_set = false; /*!< True if have updated cur_hw_set in db */
+ YamlLedTypeValue
+ ledd_led_type_string_to_enum(char *type_string)
+ {
+-    if (strcmp(type_string, "loc") == 0) {
++    if (strcmp(type_string, LEDD_LED_TYPE_LOC) == 0) {
+         return (LED_LOC);
++    } else if (strcmp(type_string, LEDD_LED_TYPE_SYS) == 0) {
++        return (LED_SYSTEM);
+     }
+ 
+     return (LED_UNKNOWN);
+@@ -233,6 +235,7 @@ ledd_write_led(struct locl_subsystem *subsys, struct locl_led *led)
+     type_value = ledd_led_type_string_to_enum(type->type);
+     switch (type_value) {
+         case LED_LOC:
++        case LED_SYSTEM:
+             switch (led->state) {
+                 case LED_STATE_FLASHING:
+                     value = settings->flashing;
+@@ -617,6 +620,33 @@ lookup_led(const char *name)
+ } /* lookup_led() */
+ 
+ /************************************************************************//**
++ * This function assumes the system is healthy since thsi function
++ * is running and sets the system LED to good.
++ *
++ * Returns:  void
++ ***************************************************************************/
++static void
++set_system_led(const char *subyst_name, enum ovsrec_led_state_e state)
++{
++    struct ovsdb_idl_txn *txn;
++    const struct ovsrec_led *ovs_led;
++
++    txn = ovsdb_idl_txn_create(idl);
++
++    OVSREC_LED_FOR_EACH(ovs_led, idl) {
++        if ((strstr(ovs_led->id, subyst_name) != ovs_led->id) ||
++            (strcmp(ovs_led->id + strlen(subyst_name) + 1,
++                    LEDD_LED_TYPE_SYS) != 0))
++            continue;
++        ovsrec_led_set_status(ovs_led, ledd_status_to_string(LED_STATUS_OK));
++        ovsrec_led_set_state(ovs_led, ledd_state_to_string(state));
++    }
++
++    ovsdb_idl_txn_commit_block(txn);
++    ovsdb_idl_txn_destroy(txn);
++}
++
++/************************************************************************//**
+  * Function that looks to see if the user has
+  *     changed the desired state of any LED and then processes the request
+  *
+@@ -951,6 +981,7 @@ ledd_reconfigure(void)
+     const struct ovsrec_daemon *ovs_daemon;
+     unsigned int new_idl_seqno = ovsdb_idl_get_seqno(idl);
+     struct ovsdb_idl_txn *txn;
++    const char *subsystem_added = NULL;
+ 
+     COVERAGE_INC(ledd_reconfigure);
+ 
+@@ -973,6 +1004,7 @@ ledd_reconfigure(void)
+         if (subsystem == NULL) {
+             /* If the subsystem is new, add it */
+             add_subsystem(ovs_sub, txn);
++            subsystem_added = ovs_sub->name;
+         } else {
+             /* Else, look for any changes to process */
+             process_changes_in_subsys(subsystem);
+@@ -1003,6 +1035,9 @@ ledd_reconfigure(void)
+     /* For any missing subsystems (no longer there), remove them. */
+     ledd_remove_unmarked_subsystems();
+ 
++    if (subsystem_added)
++      set_system_led(subsystem_added, LED_STATE_ON);
++
+ } /* ledd_reconfigure() */
+ 
+ static void

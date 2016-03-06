@@ -68,6 +68,7 @@ install:
 	cp -L $(SHADOW)/ops-build/yocto/openswitch/meta-distro-openswitch/recipes-ops/l2/ops-arpmgrd/ops-arpmgrd.service $(DESTDIR)/lib/systemd/system
 	cp -L $(SHADOW)/ops-build/yocto/openswitch/meta-distro-openswitch/recipes-ops/l2/ops-intfd/ops-intfd.service $(DESTDIR)/lib/systemd/system
 	cp -L $(SHADOW)/ops-build/yocto/openswitch/meta-distro-openswitch/recipes-ops/l3/ops-portd/ops-portd.service $(DESTDIR)/lib/systemd/system
+	cp -L $(SHADOW)/ops-build/yocto/openswitch/meta-distro-openswitch/recipes-ops/openvswitch/ops-openvswitch/switchd_bcm.service $(DESTDIR)/lib/systemd/system
 	cp -L $(SHADOW)/ops-build/yocto/openswitch/meta-distro-openswitch/recipes-ops/utils/ops-aaa-utils/aaautils.service $(DESTDIR)/lib/systemd/system
 	cp -L $(SHADOW)/ops-build/yocto/openswitch/meta-distro-openswitch/recipes-ops/utils/ops-aaa-utils/server $(DESTDIR)/etc/raddb
 	cp -L $(SHADOW)/ops-build/yocto/openswitch/meta-distro-openswitch/recipes-ops/utils/ops-aaa-utils/useradd $(DESTDIR)/etc/sudoers.d

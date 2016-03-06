@@ -17,6 +17,14 @@ export DEBEMAIL:="ops-dev@lists.openswitch.net"
 export DEBFULLNAME:="OpenSwitch Developers"
 export DH_VERBOSE=1
 
+# Selects the platform-specific OpenNSL
+PLATFORM ?= alpha-snx60a0-486f
+BCM_PLATFORM ?= snx60a0-486f
+ASIC ?= trident2
+SDK_VERSION ?=6.4.8
+KERNEL_VERSION ?= 3.18.26
+KERNEL_BUILD ?= $(KERNEL_VERSION)-amd64
+
 AAA-UTILS_REP:=ops-aaa-utils
 AAA-UTILS_VERSION:=1.0-1
 AAA-UTILS_DEB_TYPE:=all
@@ -88,6 +96,26 @@ LEDD_DEB_NAME:=$(LEDD_REP)
 LEDD_DEB:=$(LEDD_DEB_NAME)-$(LEDD_VERSION)-$(LEDD_DEB_TYPE).deb
 LEDD_TARGET:=$(SHADOW)/$(LEDD_REP)/$(LEDD_DEB)
 LEDD_INSTALL:=$(BUILDDIR)/$(LEDD_DEB)
+
+NSLPLUGIN_REP:=ops-switchd-opennsl-plugin
+NSLPLUGIN_VERSION:=0.1.1
+NSLPLUGIN_DEB_TYPE:=Linux
+NSLPLUGIN_DEB_NAME:=ovs_bcm_plugin
+NSLPLUGIN_DEB:=$(NSLPLUGIN_DEB_NAME)-$(NSLPLUGIN_VERSION)-$(NSLPLUGIN_DEB_TYPE).deb
+NSLPLUGIN_TARGET:=$(SHADOW)/$(NSLPLUGIN_REP)/$(NSLPLUGIN_DEB)
+NSLPLUGIN_INSTALL:=$(BUILDDIR)/$(NSLPLUGIN_DEB)
+
+OPENNSL_REP:=opennsl
+OPENNSL_VERSION:=3.1.0.3
+OPENNSL_BZ2:=$(OPENNSL_REP)-$(OPENNSL_VERSION)-cdp-$(PLATFORM)-$(ASIC)-deb316.tar.bz2
+OPENNSL_DEB_TYPE:=amd64
+OPENNSL_DEB_NAME:=opennsl
+OPENNSL_DEB:=$(OPENNSL_DEB_NAME)-$(OPENNSL_VERSION)-$(PLATFORM)-$(OPENNSL_DEB_TYPE).deb
+OPENNSL_INSTALL:=$(BUILDDIR)/$(OPENNSL_DEB)
+OPENNSL_PC:=opennsl.pc
+OPENNSL_PC_INSTALL:=$(BUILDDIR)
+CDPDIR:=$(OPENNSL_REP)-$(OPENNSL_VERSION)-cdp
+OPENNSL_DEBDIR:=$(SHADOW)/$(CDPDIR)/debian
 
 OPENSWITCH_REP:=openswitch
 OPENSWITCH_VERSION:=1.1.5
@@ -227,13 +255,13 @@ RESTAPI_REP:=ops-restapi
 SHADOW_ONLY:=$(OPS_REP) $(HW_CONFIG_REP) $(BUILD_REP) $(RESTAPI_REP)
 SHADOW_ONLY_SHADOW:=$(patsubst %,$(SHADOW)/%,$(SHADOW_ONLY))
 
-ALL_REPOSITORIES:=$(SHADOW_ONLY) $(FAND_REP) $(ARPMGRD_REP) $(INTFD_REP) $(LEDD_REP) $(PMD_REP) $(POWERD_REP) $(PORTD_REP) $(SYSD_REP) $(TEMPD_REP) $(VLAND_REP) $(UTILS_REP) $(CONFIG-YAML_REP) $(SWITCHD-CONTAINER_REP) $(AAA-UTILS_REP) $(CFGD_REP) $(RESTD_REP) $(CLI_REP) $(OPENVSWITCH_REP) $(WEBUI_REP)
+ALL_REPOSITORIES:=$(SHADOW_ONLY) $(FAND_REP) $(ARPMGRD_REP) $(INTFD_REP) $(LEDD_REP) $(PMD_REP) $(POWERD_REP) $(PORTD_REP) $(SYSD_REP) $(TEMPD_REP) $(VLAND_REP) $(UTILS_REP) $(CONFIG-YAML_REP) $(AAA-UTILS_REP) $(CFGD_REP) $(RESTD_REP) $(CLI_REP) $(OPENVSWITCH_REP) $(WEBUI_REP) $(OPENNSL_REP) $(NSLPLUGIN_REP)
 CHECKOUT_REPOSITORIES:=$(patsubst %,checkout-%,$(ALL_REPOSITORIES))
 ALL_REPOSITORIES+=$(PYPI_LIBS)
 CLEAN_REPOSITORIES:=$(patsubst %,clean-%,$(ALL_REPOSITORIES)) clean-$(OPENSWITCH_REP)
 DISTCLEAN_REPOSITORIES:=$(patsubst %,distclean-%,$(ALL_REPOSITORIES)) distclean-$(OPENSWITCH_REP)
 
-ALL_APT_REPOS:=$(PYPI_DEBS) $(OPENSWITCH_DEB_NAME) $(OPENVSWITCH_DEB_NAME) $(OPENVSWITCH_SW_DEB_NAME) $(CLI_DEB_NAME) $(CLI_DEV_DEB_NAME) $(FAND_DEB_NAME) $(ARPMGRD_DEB_NAME) $(INTFD_DEB_NAME) $(LEDD_DEB_NAME) $(PMD_DEB_NAME) $(POWERD_DEB_NAME) $(PORTD_DEB_NAME) $(SYSD_DEB_NAME) $(TEMPD_DEB_NAME) $(VLAND_DEB_NAME) $(UTILS_DEB_NAME) $(CONFIG-YAML_DEB_NAME) $(SWITCHD-CONTAINER_DEB_NAME) $(AAA-UTILS_DEB_NAME) $(CFGD_DEB_NAME) $(RESTD_DEB_NAME) $(CLI_DEB_NAME) $(CLI_DEV_DEB_NAME) $(PYPI_DEBS)
+ALL_APT_REPOS:=$(PYPI_DEBS) $(OPENSWITCH_DEB_NAME) $(OPENVSWITCH_DEB_NAME) $(OPENVSWITCH_SW_DEB_NAME) $(CLI_DEB_NAME) $(CLI_DEV_DEB_NAME) $(FAND_DEB_NAME) $(ARPMGRD_DEB_NAME) $(INTFD_DEB_NAME) $(LEDD_DEB_NAME) $(PMD_DEB_NAME) $(POWERD_DEB_NAME) $(PORTD_DEB_NAME) $(SYSD_DEB_NAME) $(TEMPD_DEB_NAME) $(VLAND_DEB_NAME) $(UTILS_DEB_NAME) $(CONFIG-YAML_DEB_NAME) $(AAA-UTILS_DEB_NAME) $(CFGD_DEB_NAME) $(RESTD_DEB_NAME) $(CLI_DEB_NAME) $(CLI_DEV_DEB_NAME) $(PYPI_DEBS) $(OPENNSL_DEB_NAME) $(NSLPLUGIN_DEB_NAME)
 
 # Useful variables
 SHELL=/bin/bash
@@ -275,7 +303,7 @@ endef
 
 PROJECT:="OpenSwitch Debian project"
 define CLONE
-	git clone git://git.openswitch.net/openswitch/$(1) $(2)/$(1) ; \
+	git clone git://git.openswitch.net/openswitch/$(1) $(2)/$(1) ;				\
 	case $(1) in										\
 	ops) commit=f2726d91757af1d9af873793d05c512f3b7f2c3e ;;					\
 	ops-aaa-utils) commit=3d39be131a69e6f051daa7e9db447aeaa3989bb2 ;;			\
@@ -294,17 +322,18 @@ define CLONE
 	ops-powerd) commit=f17b175c3000052f34f1af13798f53e4bde9e016 ;;				\
 	ops-restapi) commit=f052b17043e8adaccacaaa7f1fe49847d98fcbab ;;				\
 	ops-restd) commit=7fcfe8daae526d9302e5fc83837c0f6238336d1d ;;				\
+	ops-switchd-opennsl-plugin) commit=a8b8d90ca0f3d1a9723b536e5db833a422178929 ;;		\
 	ops-switchd-container-plugin) commit=9bf84463dd5e1d2065790bc507f7376933741965 ;;	\
 	ops-sysd) commit=f0c9b5c75d6b85f47598228ac26a1398e2ae8882 ;;				\
 	ops-tempd) commit=ab49827ee980ea81481b7f5c3c753320f9f998f0 ;;				\
 	ops-utils) commit=36eb102e120f8fea05080f344d23201d510e23a2 ;;				\
 	ops-vland) commit=d2f81f2c721e7210fb1dec432bbb6e8857251d44 ;;				\
 	ops-webui) commit=5c2baf6e0acb7466a42d98b598e56134e1b7b0e5 ;;				\
-	esac ; \
-	if [ ! -z "$$commit" ] ; then \
-		$(ECHO) "$(CYAN)Rolling back $(1) to $(PROJECT) base $$commit.$(GRAY)" ; \
-		cd $(2)/$(1) && git reset --hard $$commit ; \
-	fi ; \
+	esac ;											\
+	if [ ! -z "$$commit" ] ; then								\
+		$(ECHO) "$(CYAN)Rolling back $(1) to $(PROJECT) base $$commit.$(GRAY)" ;	\
+		cd $(2)/$(1) && git reset --hard $$commit ;					\
+	fi ;											\
 	if [ -f $(PATCHDIR)/$(1).diff ] ; then							\
 		$(ECHO) "$(PURPLE)Patch $(1) to $(PROJECT).$(GRAY)" ;				\
 		cd $(2)/$(1) && patch -p 1 < $(PATCHDIR)/$(1).diff ;				\
@@ -407,7 +436,7 @@ define FIXUP_PC
 endef
 
 .PHONY: all openswitch $(ALL_REPOSITORIES)
-.PHONY: libovscommon.pc libovsdb.pc $(UTILS_PC) $(CONFIG-YAML_PC) $(CLI_PC)
+.PHONY: libovscommon.pc libovsdb.pc $(UTILS_PC) $(CONFIG-YAML_PC) $(CLI_PC) $(OPENNSL_PC)
 .PHONY: clean distclean $(DISTCLEAN_REPOSITORIES) $(CLEAN_REPOSITORIES)
 .PHONY: $(CHECKOUT_REPOSITORIES) checkout-all
 
@@ -423,6 +452,82 @@ $(SHADOW_ONLY_SHADOW): $(SHADOW)/%:
 $(SHADOW_ONLY): %: $(SHADOW)/%
 
 $(SHADOW_ONLY_CLEAN):
+
+#
+# opennsl
+#
+
+$(SHADOW)/$(CDPDIR):
+	$(V)if [ ! -d $@ ] ; then								 \
+		mkdir -p $(SHADOW)/$(OPENNSL_REP) ;						 \
+		cd $(SHADOW) && tar xf $(BUILD_ROOT)/$(OPENNSL_REP)/$(PLATFORM)/$(OPENNSL_BZ2) ; \
+		mkdir -p $@/sdk-$(SDK_VERSION)-gpl-modules/systems/linux/user/$(BCM_PLATFORM) ; \
+		cp $(SHADOW)/$(BUILD_REP)/yocto/openswitch/meta-platform-openswitch-as5712/recipes-asic/opennsl/opennsl-cdp/Makefile-modules $@/sdk-$(SDK_VERSION)-gpl-modules/systems/linux/user/$(BCM_PLATFORM)/Makefile ; \
+		dpkg -x $(BUILD_ROOT)/$(OPENNSL_REP)/linux-headers-*.deb $(BUILDDIR) ; \
+	fi
+
+$(OPENNSL_INSTALL): $(SHADOW)/$(CDPDIR)/sdk-$(SDK_VERSION)-gpl-modules/systems/linux/user/$(BCM_PLATFORM)/Makefile
+	$(V)cd $(SHADOW)/$(CDPDIR)/sdk-$(SDK_VERSION)-gpl-modules/systems/linux/user/$(BCM_PLATFORM) &&  KERNEL_SRC=$(BUILDDIR)/usr/src/linux-headers-$(KERNEL_VERSION)-$(OPENNSL_DEB_TYPE) KBUILD_OUTPUT=$(BUILDDIR)/usr/src/linux-headers-$(KERNEL_VERSION)-$(OPENNSL_DEB_TYPE) SDK="$(SHADOW)/$(CDPDIR)/sdk-$(SDK_VERSION)-gpl-modules" CROSS_COMPILE="" make
+
+#
+# TODO!!! For now, brute force a Debian package.  In the future, we'll use debhelper
+#
+	$(V)rm -rf $(OPENNSL_DEBDIR) > /dev/null || true
+
+# Packaging
+	$(V)install -d $(OPENNSL_DEBDIR)
+	$(V)install -d $(OPENNSL_DEBDIR)/DEBIAN
+	$(V)install $(BUILD_ROOT)/opennsl/$(PLATFORM)/debian/control $(OPENNSL_DEBDIR)/DEBIAN
+	$(V)install -m 0755 $(BUILD_ROOT)/opennsl/$(PLATFORM)/debian/postinst $(OPENNSL_DEBDIR)/DEBIAN > /dev/null || true
+
+# Headers
+	$(V)install -d $(OPENNSL_DEBDIR)/usr/include
+	$(V)cp -RLp $(SHADOW)/$(CDPDIR)/include/* $(OPENNSL_DEBDIR)/usr/include
+
+# Library
+	$(V)install -d $(OPENNSL_DEBDIR)/usr/lib/pkgconfig
+	$(V)install -m 0644 $(SHADOW)/$(CDPDIR)/bin/$(PLATFORM)-$(ASIC)-deb316/libopennsl.so.1 $(OPENNSL_DEBDIR)/usr/lib/
+	$(V)ln -s $(OPENNSL_DEBDIR)/usr/lib/libopennsl.so.1 $(OPENNSL_DEBDIR)/usr/lib/libopennsl.so
+	$(V)install -m 0644 $(SHADOW)/$(CDPDIR)/openswitch/$(OPENNSL_PC) $(OPENNSL_DEBDIR)/usr/lib/pkgconfig/$(OPENNSL_PC)
+	$(V)sed -i -- "s/-DCDP_EXCLUDE/-UDCDP_EXCLUDE/" $(OPENNSL_DEBDIR)/usr/lib/pkgconfig/$(OPENNSL_PC)
+# TODO - These are wrong in the pre-built CDP tarball
+	$(V)sed -i -- "/^exec_prefix=*/c\libdir=$$\{prefix\}\/lib" $(OPENNSL_DEBDIR)/usr/lib/pkgconfig/$(OPENNSL_PC)
+	$(V)sed -i -- "s/Libs:/Libs: -L$$\{libdir\}/" $(OPENNSL_DEBDIR)/usr/lib/pkgconfig/$(OPENNSL_PC)
+	$(V)sed -i -- "s/Cflags:/Cflags: -I$$\{includedir\}/" $(OPENNSL_DEBDIR)/usr/lib/pkgconfig/$(OPENNSL_PC)
+
+# netserve utility
+	$(V)install -d $(OPENNSL_DEBDIR)/usr/bin/
+	$(V)install -m 0755 $(SHADOW)/$(CDPDIR)/bin/$(PLATFORM)-$(ASIC)-deb316/netserve $(OPENNSL_DEBDIR)/usr/bin/
+
+# kernel modules
+	$(V)install -d $(OPENNSL_DEBDIR)/lib/modules/$(KERNEL_BUILD)/extra/opennsl
+	$(V)install -m 0644 $(SHADOW)/$(CDPDIR)/sdk-$(SDK_VERSION)-gpl-modules/build/linux/user/$(BCM_PLATFORM)/linux-kernel-bde.ko $(OPENNSL_DEBDIR)/lib/modules/$(KERNEL_BUILD)/extra/opennsl
+	$(V)install -m 0644 $(SHADOW)/$(CDPDIR)/sdk-$(SDK_VERSION)-gpl-modules/build/linux/user/$(BCM_PLATFORM)/linux-bcm-knet.ko $(OPENNSL_DEBDIR)/lib/modules/$(KERNEL_BUILD)/extra/opennsl
+	$(V)install -m 0644 $(SHADOW)/$(CDPDIR)/sdk-$(SDK_VERSION)-gpl-modules/build/linux/user/$(BCM_PLATFORM)/linux-user-bde.ko $(OPENNSL_DEBDIR)/lib/modules/$(KERNEL_BUILD)/extra/opennsl
+	$(V)install -d $(OPENNSL_DEBDIR)/etc/modules-load.d/
+	$(V)install -m 0655 $(SHADOW)/$(CDPDIR)/openswitch/bcm-modules.conf $(OPENNSL_DEBDIR)/etc/modules-load.d/
+	$(V)install -d $(OPENNSL_DEBDIR)/etc/modprobe.d/
+	$(V)install -m 0655 $(SHADOW)/$(CDPDIR)/openswitch/bcm-options.conf $(OPENNSL_DEBDIR)/etc/modprobe.d/
+	$(V)install -d $(OPENNSL_DEBDIR)/etc/udev/rules.d
+	$(V)install -m 0644 $(SHADOW)/$(CDPDIR)/openswitch/bcm.rules $(OPENNSL_DEBDIR)/etc/udev/rules.d/70-bcm.rules
+	$(V)install -m 0755 $(SHADOW)/$(CDPDIR)/openswitch/bcm_devices.sh $(OPENNSL_DEBDIR)/etc/udev/rules.d
+
+# Build the package
+	$(V)cd $(BUILDDIR) && dpkg-deb --build $(OPENNSL_DEBDIR)
+	$(V)mv $(SHADOW)/$(CDPDIR)/debian.deb $@
+
+$(OPENNSL_REP): $(SHADOW)/$(CDPDIR) $(SHADOW)/$(BUILD_REP) $(OPENNSL_INSTALL)
+
+$(OPENNSL_PC_INSTALL)/usr/lib/pkgconfig/$(OPENNSL_PC): $(OPENNSL_INSTALL)
+	$(V)dpkg -x $(OPENNSL_INSTALL) $(BUILDDIR)
+	$(V)$(call FIXUP_PC,$(OPENNSL_PC_INSTALL)/usr,$@)
+
+$(OPENNSL_PC): $(OPENNSL_PC_INSTALL)/usr/lib/pkgconfig/$(OPENNSL_PC)
+
+clean-$(OPENNSL_REP):
+	$(V)rm -f $(OPENNSL_INSTALL) > /dev/null || true
+	$(V)rm -rf $(SHADOW)/$(CDPDIR) > /dev/null || true
+	$(V)rm -f $(OPENNSL_PC_INSTALL)/usr/lib/pkgconfig/$(OPENNSL_PC) > /dev/null || true
 
 #
 # ops
@@ -780,6 +885,25 @@ $(SWITCHD-CONTAINER_REP): libovscommon.pc libovsdb.pc $(SWITCHD-CONTAINER_TARGET
 
 clean-$(SWITCHD-CONTAINER_REP):
 	$(V)$(call CLEAN_OPS,$(SWITCHD-CONTAINER_REP),$(SWITCHD-CONTAINER_TARGET),$(SWITCHD-CONTAINER_INSTALL))
+
+# ops-switchd-opennsl-plugin
+
+$(SHADOW)/$(NSLPLUGIN_REP):
+	$(call MAKE_SHADOW,$(NSLPLUGIN_REP))
+
+$(SHADOW)/$(NSLPLUGIN_REP)/CMakeLists.txt: $(SHADOW)/$(NSLPLUGIN_REP)
+
+$(SHADOW)/$(NSLPLUGIN_REP)/Makefile: $(SHADOW)/$(NSLPLUGIN_REP)/CMakeLists.txt
+	$(V)cd $(SHADOW)/$(NSLPLUGIN_REP) && cmake $(OPS_CMAKE_ARGS) .
+
+$(NSLPLUGIN_TARGET): $(SHADOW)/$(NSLPLUGIN_REP)/Makefile
+	$(V)$(call BUILD_OPS,$(NSLPLUGIN_REP))
+
+$(NSLPLUGIN_REP): libovscommon.pc libovsdb.pc $(OPENNSL_PC) $(NSLPLUGIN_TARGET)
+	$(V)cp $(NSLPLUGIN_TARGET) $(NSLPLUGIN_INSTALL)
+
+clean-$(NSLPLUGIN_REP):
+	$(V)$(call CLEAN_OPS,$(NSLPLUGIN_REP),$(NSLPLUGIN_TARGET),$(NSLPLUGIN_INSTALL))
 
 # ops-tempd
 

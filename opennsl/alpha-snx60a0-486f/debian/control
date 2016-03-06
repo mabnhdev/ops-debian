@@ -1,0 +1,10 @@
+Package: opennsl-alpha-snx60a0-486f
+Version: 0.1.0
+Section: unknown
+Priority: optional
+Architecture: amd64
+Depends: libc6(>=2.19-18)
+Maintainer: OpenSwitch Developers <ops-list@lists.openswitch.net>
+Description: OpenNSL for OpenSwitch.
+ This package provides an OpenNSL for the Alphanetworks SNX60A0-486F.
+ 

@@ -9,16 +9,19 @@
 # Description:       Standalone OpenSwitch controls and monitors a whitebox network switch.
 ### END INIT INFO
 
-SERVICES="ops-init ovsdb-server ops-sysd cfgd ops-fand ops-pmd ops-tempd ops-powerd ops-ledd ops-vland ops-arpmgrd ops-intfd ops-portd aaautils restd ops-webui"
+SERVICES="ovsdb-server ops-init ops-sysd aaautils ops-fand ops-intfd ops-ledd ops-pmd ops-powerd ops-tempd ops-vland switchd_bcm ops-arpmgrd ops-portd cfgd restd ops-webui"
 
 start() {
-    systemctl start $SERVICES
+    for svc in $SERVICES ; do
+        systemctl start $SERVICES &
+        sleep 1
+    done
     return 0
 }
 
 stop() {
     REV_SERVICES="$(echo "$SERVICES" | awk '{for(i=NF;i>0;--i) printf("%s ",$i); }')"
-    systemctl stop $REV_SERVICES    
+    systemctl stop $REV_SERVICES  
     return 0
 }
 
