@@ -13,8 +13,7 @@ SERVICES="ovsdb-server ops-init ops-sysd aaautils ops-fand ops-intfd ops-ledd op
 
 start() {
     for svc in $SERVICES ; do
-        systemctl start $SERVICES &
-        sleep 1
+        systemctl start $svc &
     done
     return 0
 }
