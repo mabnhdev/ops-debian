@@ -1,12 +1,12 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 73b4fd0..1f10493 100644
+index 73b4fd0..481137b 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -66,3 +66,17 @@ install(FILES ${INCL_DIR}/config-yaml.h ${INCL_DIR}/i2c.h
+@@ -65,4 +65,16 @@ install(FILES ${CMAKE_BINARY_DIR}/ops-config-yaml.pc DESTINATION lib/pkgconfig)
+ install(FILES ${INCL_DIR}/config-yaml.h ${INCL_DIR}/i2c.h
  	DESTINATION include)
  
- add_subdirectory(tests)
-+
+-add_subdirectory(tests)
 +###
 +### Packaging
 +###
